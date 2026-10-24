@@ -4,6 +4,11 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     cooldown:
       default-days: 7
     groups:
@@ -16,6 +21,11 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     cooldown:
       default-days: 7
     groups:
