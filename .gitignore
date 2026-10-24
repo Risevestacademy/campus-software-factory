@@ -1,0 +1,30 @@
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs, caches, and editor files
+*.log
+.DS_Store
+.idea/
+.vscode/
+.eslintcache
+.cache/
+
+# Factory-local working material
+.campus-factory-skills/
+actual-rulesets.json
+drift-report.json
+metrics-report.json
+
+
+docs/*

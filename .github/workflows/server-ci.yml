@@ -1,0 +1,116 @@
+name: Reusable / Campus Server CI
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: 0
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: campus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d campus_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out product repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.0.0
+        with:
+          node-version: 24
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Check formatting
+        run: pnpm format:check
+      - name: Build
+        run: pnpm build
+      - name: Run unit tests
+        env:
+          WORLD_TEST_REDIS_URL: redis://localhost:6379/15
+          CAMPUS_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/campus_test
+        run: pnpm test
+      - name: Run API boot smoke test
+        working-directory: apps/campus-api
+        env:
+          FF_POSTHOG_ENABLED: "true"
+          POSTHOG_PROJECT_TOKEN: phc_dummy_key_for_ci_smoke_test
+          APP_PUBLIC_URL: http://localhost:3000
+          FF_GOOGLE_AUTH_ENABLED: "true"
+          GOOGLE_CLIENT_ID: dummy-client-id.apps.googleusercontent.com
+          GOOGLE_CLIENT_SECRET: dummy-client-secret-for-ci-smoke-test
+          GOOGLE_CALLBACK_URL: http://localhost:3000/v1/auth/google/callback
+          AUTH_STATE_SECRET: dummy-state-secret-for-ci-smoke-test-32
+          AUTH_SESSION_SECRET: dummy-session-secret-for-ci-smoke-test-32
+        run: |
+          node dist/main.js > boot.log 2>&1 &
+          echo $! > app.pid
+
+          ready=false
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/v1/health > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ready" = false ]; then
+            echo "App failed to become healthy within 30s"
+            cat boot.log
+            kill "$(cat app.pid)" 2>/dev/null || true
+            exit 1
+          fi
+
+          kill "$(cat app.pid)"
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out product repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.0.0
+        with:
+          node-version: 24
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run API end-to-end tests
+        run: pnpm --filter campus-api test:e2e

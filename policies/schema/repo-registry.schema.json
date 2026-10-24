@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://campusbyrise.com/schemas/repo-registry.schema.json",
+  "title": "Campus software factory repository registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "repositories"],
+  "properties": {
+    "version": { "const": 1 },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "github", "ownerTeam", "workflow"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "github": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+          "ownerTeam": { "type": "string", "minLength": 1 },
+          "workflow": { "enum": ["web", "server", "mobile"] }
+        }
+      }
+    }
+  }
+}

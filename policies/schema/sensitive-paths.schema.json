@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://campusbyrise.com/schemas/sensitive-paths.schema.json",
+  "title": "Campus software factory path policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "mechanicalAllowlist", "sensitivePaths"],
+  "properties": {
+    "version": { "const": 1 },
+    "mechanicalAllowlist": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mechanicalRule" }
+    },
+    "sensitivePaths": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sensitiveRule" }
+    }
+  },
+  "$defs": {
+    "mechanicalRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "tier"],
+      "properties": {
+        "pattern": { "type": "string", "minLength": 1 },
+        "tier": { "enum": ["R0", "R1"] }
+      }
+    },
+    "sensitiveRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "tier"],
+      "properties": {
+        "pattern": { "type": "string", "minLength": 1 },
+        "tier": { "enum": ["R3", "R4"] }
+      }
+    }
+  }
+}

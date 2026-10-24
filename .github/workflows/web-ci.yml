@@ -1,0 +1,154 @@
+name: Reusable / Campus Web CI
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: 0
+  NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+  NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out product repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Select public build variables
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+          STAGING_SANITY_DATASET: ${{ vars.STAGING_NEXT_PUBLIC_SANITY_DATASET }}
+          STAGING_SANITY_PROJECT_ID: ${{ vars.STAGING_NEXT_PUBLIC_SANITY_PROJECT_ID }}
+          PRODUCTION_SANITY_DATASET: ${{ vars.PRODUCTION_NEXT_PUBLIC_SANITY_DATASET }}
+          PRODUCTION_SANITY_PROJECT_ID: ${{ vars.PRODUCTION_NEXT_PUBLIC_SANITY_PROJECT_ID }}
+          STAGING_WORLD_URL: ${{ vars.STAGING_NEXT_PUBLIC_WORLD_URL }}
+          PRODUCTION_WORLD_URL: ${{ vars.PRODUCTION_NEXT_PUBLIC_WORLD_URL }}
+        run: |
+          set -euo pipefail
+
+          case "$TARGET_BRANCH" in
+            dev)
+              sanity_dataset="$STAGING_SANITY_DATASET"
+              sanity_project_id="$STAGING_SANITY_PROJECT_ID"
+              world_url="$STAGING_WORLD_URL"
+              ;;
+            main)
+              sanity_dataset="$PRODUCTION_SANITY_DATASET"
+              sanity_project_id="$PRODUCTION_SANITY_PROJECT_ID"
+              world_url="$PRODUCTION_WORLD_URL"
+              ;;
+            *)
+              echo "::error::Unsupported CI target branch: $TARGET_BRANCH"
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "$sanity_dataset" || -z "$sanity_project_id" || -z "$world_url" ]]; then
+            echo "::error::Public build repository variables are missing for $TARGET_BRANCH."
+            exit 1
+          fi
+
+          {
+            echo "NEXT_PUBLIC_SANITY_DATASET=$sanity_dataset"
+            echo "NEXT_PUBLIC_SANITY_PROJECT_ID=$sanity_project_id"
+            echo "NEXT_PUBLIC_WORLD_URL=$world_url"
+          } >> "$GITHUB_ENV"
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.0.0
+        with:
+          node-version: 22.22.0
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Check formatting
+        run: pnpm format:check
+      - name: Run unit tests
+        run: pnpm test
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out product repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Select public build variables
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+          STAGING_SANITY_DATASET: ${{ vars.STAGING_NEXT_PUBLIC_SANITY_DATASET }}
+          STAGING_SANITY_PROJECT_ID: ${{ vars.STAGING_NEXT_PUBLIC_SANITY_PROJECT_ID }}
+          PRODUCTION_SANITY_DATASET: ${{ vars.PRODUCTION_NEXT_PUBLIC_SANITY_DATASET }}
+          PRODUCTION_SANITY_PROJECT_ID: ${{ vars.PRODUCTION_NEXT_PUBLIC_SANITY_PROJECT_ID }}
+          STAGING_WORLD_URL: ${{ vars.STAGING_NEXT_PUBLIC_WORLD_URL }}
+          PRODUCTION_WORLD_URL: ${{ vars.PRODUCTION_NEXT_PUBLIC_WORLD_URL }}
+        run: |
+          set -euo pipefail
+
+          case "$TARGET_BRANCH" in
+            dev)
+              sanity_dataset="$STAGING_SANITY_DATASET"
+              sanity_project_id="$STAGING_SANITY_PROJECT_ID"
+              world_url="$STAGING_WORLD_URL"
+              ;;
+            main)
+              sanity_dataset="$PRODUCTION_SANITY_DATASET"
+              sanity_project_id="$PRODUCTION_SANITY_PROJECT_ID"
+              world_url="$PRODUCTION_WORLD_URL"
+              ;;
+            *)
+              echo "::error::Unsupported CI target branch: $TARGET_BRANCH"
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "$sanity_dataset" || -z "$sanity_project_id" || -z "$world_url" ]]; then
+            echo "::error::Public build repository variables are missing for $TARGET_BRANCH."
+            exit 1
+          fi
+
+          {
+            echo "NEXT_PUBLIC_SANITY_DATASET=$sanity_dataset"
+            echo "NEXT_PUBLIC_SANITY_PROJECT_ID=$sanity_project_id"
+            echo "NEXT_PUBLIC_WORLD_URL=$world_url"
+          } >> "$GITHUB_ENV"
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.0.0
+        with:
+          node-version: 22.22.0
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Storybook tests and build
+        run: pnpm eval:storybook
+      - name: Build application
+        run: pnpm build
+      - name: Run browser tests
+        run: pnpm exec playwright test --project=chromium
+      - name: Upload browser test artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-test-artifacts
+          path: |
+            playwright-report/
+            test-results/storybook/
+          retention-days: 7

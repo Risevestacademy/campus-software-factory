@@ -1,0 +1,44 @@
+version: 1
+
+businessHours:
+  timezone: Africa/Lagos
+  utcOffsetMinutes: 60
+  weekdays: [1, 2, 3, 4, 5]
+  startMinute: 540
+  endMinute: 1020
+  holidays: []
+
+reviewSlo:
+  reminderMinutes: 120
+  reassignMinutes: 240
+  escalateMinutes: 480
+
+mergeSlo:
+  notifyWhenEligible: true
+  reminderMinutes: 30
+  escalateMinutes: 60
+
+mergePolicy:
+  autoMerge: false
+  mergeQueue: false
+  method: squash
+  actor: owning-codeowner
+  requireIndependentLatestApproval: true
+
+approvals:
+  R0:
+    owningTeam: 1
+    specialist: 0
+  R1:
+    owningTeam: 1
+    specialist: 0
+  R2:
+    owningTeam: 1
+    specialist: 0
+  R3:
+    owningTeam: 1
+    specialist: 1
+    distinctPeople: true
+  R4:
+    designatedReviewers: 2
+    rolloutAndRollbackPlan: true

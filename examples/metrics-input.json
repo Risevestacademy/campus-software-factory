@@ -1,0 +1,51 @@
+{
+  "schedule": {
+    "utcOffsetMinutes": 60,
+    "weekdays": [1, 2, 3, 4, 5],
+    "startMinute": 540,
+    "endMinute": 1020,
+    "holidays": []
+  },
+  "baseline": {
+    "startsAt": "2026-09-28T00:00:00.000Z",
+    "endsAt": "2026-10-12T00:00:00.000Z",
+    "pullRequests": [
+      {
+        "repository": "example/campus-web",
+        "readyAt": "2026-10-01T08:00:00.000Z",
+        "firstHumanResponseAt": "2026-10-01T10:00:00.000Z",
+        "firstApprovalAt": "2026-10-01T11:00:00.000Z",
+        "readyToMergeAt": "2026-10-01T12:00:00.000Z",
+        "eligibleAt": "2026-10-01T12:00:00.000Z",
+        "mergedAt": "2026-10-01T12:45:00.000Z",
+        "mergerTeam": "campus-web",
+        "specialistRequired": false,
+        "specialistSatisfied": false
+      }
+    ],
+    "deployments": [],
+    "reverts": [],
+    "incidents": []
+  },
+  "current": {
+    "startsAt": "2026-10-12T00:00:00.000Z",
+    "endsAt": "2026-10-26T00:00:00.000Z",
+    "pullRequests": [
+      {
+        "repository": "example/campus-web",
+        "readyAt": "2026-10-12T08:00:00.000Z",
+        "firstHumanResponseAt": "2026-10-12T09:00:00.000Z",
+        "firstApprovalAt": "2026-10-12T09:30:00.000Z",
+        "readyToMergeAt": "2026-10-12T10:00:00.000Z",
+        "eligibleAt": "2026-10-12T10:00:00.000Z",
+        "mergedAt": "2026-10-12T10:30:00.000Z",
+        "mergerTeam": "campus-web",
+        "specialistRequired": false,
+        "specialistSatisfied": false
+      }
+    ],
+    "deployments": [],
+    "reverts": [],
+    "incidents": []
+  }
+}

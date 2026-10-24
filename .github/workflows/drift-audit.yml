@@ -1,0 +1,63 @@
+name: Factory / Ruleset drift audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    if: vars.FACTORY_AUDIT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Collect actual factory rulesets
+        env:
+          FACTORY_AUDIT_TOKEN: ${{ secrets.FACTORY_AUDIT_TOKEN }}
+        run: pnpm drift:collect > "$RUNNER_TEMP/actual-rulesets.json"
+      - name: Compare expected and actual rulesets
+        id: drift
+        env:
+          ACTUAL_RULESETS: ${{ runner.temp }}/actual-rulesets.json
+          DRIFT_REPORT: ${{ runner.temp }}/drift-report.json
+        run: |
+          set +e
+          pnpm drift:check policies/rulesets/expected.json "$ACTUAL_RULESETS" > "$DRIFT_REPORT"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open a drift issue
+        if: steps.drift.outputs.detected == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRIFT_REPORT: ${{ runner.temp }}/drift-report.json
+        run: |
+          existing="$(gh issue list --state open --search 'Factory ruleset drift in:title' --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$DRIFT_REPORT"
+          else
+            gh issue create --title "Factory ruleset drift" --body-file "$DRIFT_REPORT"
+          fi
+      - name: Fail when drift exists
+        if: steps.drift.outputs.detected == 'true'
+        run: exit 1

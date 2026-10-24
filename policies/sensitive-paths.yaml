@@ -1,0 +1,41 @@
+version: 1
+
+# R0 remains human-reviewed in v1. This allowlist is recorded for measurement
+# and a possible future shadow classifier; it does not reduce required reviews.
+mechanicalAllowlist:
+  - pattern: "docs/guides/**"
+    tier: R0
+
+sensitivePaths:
+  - pattern: ".github/**"
+    tier: R3
+  - pattern: ".railway/**"
+    tier: R3
+  - pattern: ".eas/**"
+    tier: R3
+  - pattern: "proxy.ts"
+    tier: R3
+  - pattern: "**/realtime/**"
+    tier: R3
+  - pattern: "**/socket/**"
+    tier: R3
+  - pattern: "**/api/generated/**"
+    tier: R3
+  - pattern: "app.config.ts"
+    tier: R3
+  - pattern: "**/auth/**"
+    tier: R3
+  - pattern: "**/authorization/**"
+    tier: R3
+  - pattern: "**/permissions/**"
+    tier: R3
+  - pattern: "**/migrations/**"
+    tier: R4
+  - pattern: "**/infra/**"
+    tier: R3
+  - pattern: "railway*.json"
+    tier: R3
+  - pattern: "eas.json"
+    tier: R3
+  - pattern: "**/signing/**"
+    tier: R3

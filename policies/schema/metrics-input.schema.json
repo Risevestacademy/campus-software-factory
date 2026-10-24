@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://campusbyrise.com/schemas/metrics-input.schema.json",
+  "title": "Campus software factory metrics input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schedule", "baseline", "current"],
+  "properties": {
+    "schedule": { "$ref": "#/$defs/schedule" },
+    "baseline": { "$ref": "#/$defs/window" },
+    "current": { "$ref": "#/$defs/window" }
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$"
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["utcOffsetMinutes", "weekdays", "startMinute", "endMinute", "holidays"],
+      "properties": {
+        "utcOffsetMinutes": { "type": "integer", "minimum": -840, "maximum": 840 },
+        "weekdays": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 6 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "startMinute": { "type": "integer", "minimum": 0, "maximum": 1439 },
+        "endMinute": { "type": "integer", "minimum": 1, "maximum": 1440 },
+        "holidays": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startsAt", "endsAt", "pullRequests", "deployments", "reverts", "incidents"],
+      "properties": {
+        "startsAt": { "$ref": "#/$defs/timestamp" },
+        "endsAt": { "$ref": "#/$defs/timestamp" },
+        "pullRequests": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pullRequest" }
+        },
+        "deployments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/deployment" }
+        },
+        "reverts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/revert" }
+        },
+        "incidents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/incident" }
+        }
+      }
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "readyAt", "specialistRequired", "specialistSatisfied"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "readyAt": { "$ref": "#/$defs/timestamp" },
+        "firstHumanResponseAt": { "$ref": "#/$defs/timestamp" },
+        "firstApprovalAt": { "$ref": "#/$defs/timestamp" },
+        "readyToMergeAt": { "$ref": "#/$defs/timestamp" },
+        "eligibleAt": { "$ref": "#/$defs/timestamp" },
+        "mergedAt": { "$ref": "#/$defs/timestamp" },
+        "mergerTeam": { "type": "string", "minLength": 1 },
+        "specialistRequired": { "type": "boolean" },
+        "specialistSatisfied": { "type": "boolean" }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "repository", "environment", "status", "completedAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "environment": { "enum": ["staging", "production"] },
+        "status": { "enum": ["succeeded", "failed"] },
+        "completedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "revert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "deploymentId", "occurredAt"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "deploymentId": { "type": "string", "minLength": 1 },
+        "occurredAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "severity", "factoryCaused", "openedAt"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "deploymentId": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["Sev1", "Sev2", "Sev3", "Sev4"] },
+        "factoryCaused": { "type": "boolean" },
+        "openedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    }
+  }
+}

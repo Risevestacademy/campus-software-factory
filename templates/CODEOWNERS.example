@@ -1,0 +1,18 @@
+# Replace PRODUCT_TEAM with campus-web, campus-server, or campus-mobile.
+# Every referenced team must be visible and have write access.
+# Branch rules must require two approvals.
+# CODEOWNERS alone does not require one approval from every listed team.
+
+* @Risevestacademy/PRODUCT_TEAM
+/.github/ @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform @Risevestacademy/campus-security
+/.railway/ @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform @Risevestacademy/campus-security
+/.eas/ @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform @Risevestacademy/campus-security
+/proxy.ts @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-security
+/app.config.ts @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform @Risevestacademy/campus-security
+**/auth/** @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-security
+**/authorization/** @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-security
+**/permissions/** @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-security
+**/migrations/** @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform @Risevestacademy/campus-security
+**/realtime/** @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform
+**/socket/** @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform
+**/api/generated/** @Risevestacademy/PRODUCT_TEAM @Risevestacademy/campus-platform

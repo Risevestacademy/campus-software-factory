@@ -1,0 +1,27 @@
+name: Factory Quality
+
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  factory:
+    name: factory
+    if: github.event.pull_request.draft == false
+    uses: Risevestacademy/campus-software-factory/.github/workflows/PROFILE-ci.yml@PINNED_40_CHARACTER_COMMIT_SHA
+
+  quality-gate:
+    name: quality-gate
+    if: always() && github.event.pull_request.draft == false
+    needs: factory
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require factory success
+        env:
+          FACTORY_RESULT: ${{ needs.factory.result }}
+        run: test "$FACTORY_RESULT" = "success"

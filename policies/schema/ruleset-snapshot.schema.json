@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://campusbyrise.com/schemas/ruleset-snapshot.schema.json",
+  "title": "Campus software factory ruleset snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repositories"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "repositories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/repository" }
+    }
+  },
+  "$defs": {
+    "jsonValue": {
+      "anyOf": [
+        { "type": ["string", "number", "boolean", "null"] },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "$ref": "#/$defs/jsonObject" }
+      ]
+    },
+    "jsonObject": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "rulesets"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "rulesets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ruleset" }
+        }
+      }
+    },
+    "ruleset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "target",
+        "source",
+        "sourceType",
+        "enforcement",
+        "conditions",
+        "bypassActors",
+        "rules"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "sourceType": { "type": "string", "minLength": 1 },
+        "enforcement": { "enum": ["active", "disabled", "evaluate"] },
+        "conditions": { "$ref": "#/$defs/jsonObject" },
+        "bypassActors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["actorId", "actorType", "bypassMode"],
+            "properties": {
+              "actorId": { "type": ["integer", "null"] },
+              "actorType": { "type": "string", "minLength": 1 },
+              "bypassMode": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type"],
+            "properties": {
+              "type": { "type": "string", "minLength": 1 },
+              "parameters": { "$ref": "#/$defs/jsonObject" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
