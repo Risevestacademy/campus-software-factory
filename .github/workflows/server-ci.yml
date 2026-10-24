@@ -78,11 +78,12 @@ jobs:
           echo $! > app.pid
 
           ready=false
-          for i in $(seq 1 30); do
+          for attempt in $(seq 1 30); do
             if curl -sf http://localhost:3000/v1/health > /dev/null; then
               ready=true
               break
             fi
+            echo "Waiting for API health check ($attempt/30)"
             sleep 1
           done
 
