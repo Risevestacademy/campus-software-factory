@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { Ajv } from "ajv";
 import { describe, expect, test } from "vitest";
 import { parse } from "yaml";
 
@@ -25,6 +26,10 @@ describe("reviewOutputSchema", () => {
 
     expect(schema.properties.findings.maxItems).toBe(3);
     expect(schema.properties.findings.items.properties.confidence.minimum).toBe(0.9);
+  });
+
+  test("compiles under the draft-07 validator that provider CLIs use", () => {
+    expect(() => new Ajv().compile(reviewOutputSchema())).not.toThrow();
   });
 
   test("matches the rubric pinned in the review policy", async () => {

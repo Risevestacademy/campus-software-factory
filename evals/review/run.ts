@@ -105,7 +105,7 @@ async function review(
     purpose: reviewCase.purpose,
     checkRunId: 1,
   });
-  const { stdout } = await run(
+  const pending = run(
     "claude",
     [
       "-p",
@@ -135,6 +135,8 @@ async function review(
     ],
     { cwd: workspace.root, timeout: caseTimeoutMilliseconds, maxBuffer: 16 * 1024 * 1024 },
   );
+  pending.child.stdin?.end();
+  const { stdout } = await pending;
   const envelope = JSON.parse(stdout) as { structured_output?: unknown; result?: unknown };
   const raw =
     envelope.structured_output === undefined

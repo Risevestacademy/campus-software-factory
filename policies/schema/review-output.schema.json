@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "No $schema: provider CLIs validate this with a draft-07 validator that rejects the 2020-12 meta-schema. Every keyword here means the same in both drafts.",
   "$id": "https://campusbyrise.com/schemas/review-output.schema.json",
   "title": "Factory PR review model output",
   "type": "object",
