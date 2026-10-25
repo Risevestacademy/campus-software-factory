@@ -1,0 +1,19 @@
+{
+  "name": "defect-pagination",
+  "purpose": "Paginate the user list at 10 users per page. Pages are 1-based: page 1 must show the first 10 users.",
+  "base": {
+    "src/users.ts": "export interface User {\n  id: number;\n  name: string;\n}\n\nexport function listUsers(users: User[]): User[] {\n  return users;\n}\n"
+  },
+  "head": {
+    "src/users.ts": "export interface User {\n  id: number;\n  name: string;\n}\n\nexport const pageSize = 10;\n\nexport function listUsers(users: User[], page: number): User[] {\n  return users.slice(page * pageSize, page * pageSize + pageSize);\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "path": "src/users.ts",
+    "lines": [
+      8,
+      9
+    ],
+    "severity": "P1"
+  }
+}

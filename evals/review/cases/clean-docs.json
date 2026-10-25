@@ -1,0 +1,14 @@
+{
+  "name": "clean-docs",
+  "purpose": "Document that sessions renew automatically five minutes before they expire, so support can answer renewal questions from the README.",
+  "base": {
+    "README.md": "# Campus Web\n\nRun `pnpm dev` to start the app.\n",
+    "src/session-config.ts": "export const renewBeforeExpiryMinutes = 5;\n"
+  },
+  "head": {
+    "README.md": "# Campus Web\n\nRun `pnpm dev` to start the app.\n\n## Sessions\n\nSessions renew automatically five minutes before they expire\n(`renewBeforeExpiryMinutes` in `src/session-config.ts`).\n"
+  },
+  "expect": {
+    "status": "clean"
+  }
+}

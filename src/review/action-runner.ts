@@ -1,62 +1,100 @@
-import { randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
 
+import { formatNotice, formatOutput } from "./github-output.ts";
 import { GitHubRestAdapter } from "./github-rest-adapter.ts";
+import { loadRepositoryReview } from "./policy-loader.ts";
 import {
-  createClaudeReviewExecution,
-  type ReviewPolicy,
+  createFactoryReviewExecution,
+  providerAdapter,
+  renderReviewPrompt,
+  reviewOutputSchema,
+  reviewOutputSchemaPath,
+  type ExecutionPolicy,
   type ReviewTicket,
 } from "./index.ts";
 
+const phases = ["preflight", "validate", "publish", "fail"] as const;
+type Phase = (typeof phases)[number];
+
 const phase = process.argv[2];
-if (phase !== "preflight" && phase !== "publish") {
-  throw new Error('Review action phase must be "preflight" or "publish"');
+if (!isPhase(phase)) {
+  throw new Error(`Review action phase must be one of ${phases.join(", ")}`);
 }
 
-const policy: ReviewPolicy = {
-  allowedRepository: required("ALLOWED_REPOSITORY"),
-  ciWorkflowName: required("CI_WORKFLOW_NAME"),
-  canaryStartsAt: required("CANARY_STARTS_AT"),
-  canaryEndsAt: required("CANARY_ENDS_AT"),
-};
-const github = new GitHubRestAdapter({
-  apiUrl: required("GITHUB_API_URL"),
-  token: required("GITHUB_TOKEN"),
-});
-const execution = createClaudeReviewExecution(policy, github);
+const repository = required("REPOSITORY");
+const { review } = await loadRepositoryReview(
+  (entry) => entry.github === repository,
+  new Date(),
+);
+const policy: ExecutionPolicy = { repository, review };
+const adapter = providerAdapter(policy.review.provider.id);
+const execution = createFactoryReviewExecution(
+  policy,
+  new GitHubRestAdapter({
+    apiUrl: required("GITHUB_API_URL"),
+    token: required("GITHUB_TOKEN"),
+  }),
+);
 
-if (phase === "preflight") {
-  const decision = await execution.preflight({
-    repository: required("REPOSITORY"),
-    workflowRunId: positiveInteger(required("WORKFLOW_RUN_ID"), "workflow run ID"),
-    observedAt: new Date(),
-  });
-  if (decision.kind === "skip") {
-    writeOutput("eligible", "false");
-    writeOutput("reason", decision.reason);
-    process.stdout.write(`::notice::Claude review skipped: ${decision.reason}\n`);
-  } else {
+switch (phase) {
+  case "preflight": {
+    const decision = await execution.preflight({
+      repository,
+      workflowRunId: positiveInteger(required("WORKFLOW_RUN_ID"), "workflow run ID"),
+    });
+    if (decision.kind === "skip") {
+      writeOutput("eligible", "false");
+      writeOutput("reason", decision.reason);
+      notice(`Factory review skipped: ${decision.reason}`);
+      break;
+    }
     const { ticket } = decision;
     writeOutput("eligible", "true");
     writeOutput("reason", "eligible");
     writeOutput("base_sha", ticket.baseSha);
     writeOutput("head_sha", ticket.headSha);
     writeOutput("pull_request_number", String(ticket.pullRequestNumber));
-    writeOutput("claim_name", ticket.claimName);
     writeOutput("ticket", Buffer.from(JSON.stringify(ticket)).toString("base64url"));
-    writeMultilineOutput("purpose", ticket.purpose);
+    writeOutput("provider", policy.review.provider.id);
+    writeOutput("model", policy.review.provider.model);
+    writeOutput("output_schema", JSON.stringify(reviewOutputSchema()));
+    writeOutput("output_schema_path", reviewOutputSchemaPath());
+    writeOutput("prompt", renderReviewPrompt(ticket));
+    break;
   }
-} else {
-  const decision = await execution.publish({
-    ticket: decodeTicket(required("REVIEW_TICKET")),
-    modelOutputJson: required("REVIEW_JSON"),
-    observedAt: new Date(),
-  });
-  writeOutput("reviewed", decision.kind === "published" ? "true" : "false");
-  writeOutput("reason", decision.reason);
-  process.stdout.write(
-    `::notice::Claude review ${decision.kind === "published" ? "published" : "skipped"}: ${decision.reason}\n`,
-  );
+  case "validate": {
+    const decision = await execution.validate({
+      ticket: decodeTicket(required("REVIEW_TICKET")),
+      modelOutputJson: adapter.outputFrom(optional("PROVIDER_OUTPUT")),
+    });
+    writeOutput("valid", String(decision.valid));
+    if (!decision.valid) {
+      writeOutput("reason", decision.reason);
+      notice(`Factory review output rejected: ${decision.reason}`);
+    }
+    break;
+  }
+  case "publish": {
+    const result = await execution.publish({
+      ticket: decodeTicket(required("REVIEW_TICKET")),
+      modelOutputJson: adapter.outputFrom(optional("PROVIDER_OUTPUT")),
+    });
+    writeOutput("outcome", result.outcome);
+    writeOutput("conclusion", result.conclusion);
+    notice(`Factory review ${result.outcome}: ${result.conclusion}`);
+    break;
+  }
+  case "fail": {
+    await execution.fail({
+      ticket: decodeTicket(required("REVIEW_TICKET")),
+      reason: optional("FAILURE_REASON") || "review workflow failed or was cancelled",
+    });
+    break;
+  }
+}
+
+function isPhase(value: string | undefined): value is Phase {
+  return phases.some((candidate) => candidate === value);
 }
 
 function required(name: string): string {
@@ -67,6 +105,10 @@ function required(name: string): string {
   return value;
 }
 
+function optional(name: string): string {
+  return process.env[name] ?? "";
+}
+
 function positiveInteger(value: string, label: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
@@ -75,16 +117,12 @@ function positiveInteger(value: string, label: string): number {
   return parsed;
 }
 
-function writeOutput(name: string, value: string): void {
-  appendFileSync(required("GITHUB_OUTPUT"), `${name}=${value}\n`);
+function notice(message: string): void {
+  process.stdout.write(formatNotice(message));
 }
 
-function writeMultilineOutput(name: string, value: string): void {
-  const delimiter = `campus_${randomUUID()}`;
-  appendFileSync(
-    required("GITHUB_OUTPUT"),
-    `${name}<<${delimiter}\n${value}\n${delimiter}\n`,
-  );
+function writeOutput(name: string, value: string): void {
+  appendFileSync(required("GITHUB_OUTPUT"), formatOutput(name, value));
 }
 
 function decodeTicket(encoded: string): ReviewTicket {
@@ -101,14 +139,11 @@ function decodeTicket(encoded: string): ReviewTicket {
   return {
     repository: ticketString(value.repository, "repository"),
     workflowRunId: ticketInteger(value.workflowRunId, "workflowRunId"),
-    pullRequestNumber: ticketInteger(
-      value.pullRequestNumber,
-      "pullRequestNumber",
-    ),
+    pullRequestNumber: ticketInteger(value.pullRequestNumber, "pullRequestNumber"),
     baseSha: ticketString(value.baseSha, "baseSha"),
     headSha: ticketString(value.headSha, "headSha"),
     purpose: ticketString(value.purpose, "purpose"),
-    claimName: ticketString(value.claimName, "claimName"),
+    checkRunId: ticketInteger(value.checkRunId, "checkRunId"),
   };
 }
 

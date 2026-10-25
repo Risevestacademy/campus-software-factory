@@ -1,0 +1,14 @@
+{
+  "name": "clean-refactor",
+  "purpose": "Rename greet's parameter from n to name for readability, with no behavior change.",
+  "base": {
+    "src/greeting.ts": "export function greet(n: string): string {\n  return `Hello, ${n}!`;\n}\n",
+    "tests/greeting.test.ts": "import { expect, test } from \"vitest\";\n\nimport { greet } from \"../src/greeting\";\n\ntest(\"greets by name\", () => {\n  expect(greet(\"Ada\")).toBe(\"Hello, Ada!\");\n});\n"
+  },
+  "head": {
+    "src/greeting.ts": "export function greet(name: string): string {\n  return `Hello, ${name}!`;\n}\n"
+  },
+  "expect": {
+    "status": "clean"
+  }
+}

@@ -1,0 +1,227 @@
+name: Factory PR Review
+description: Provider-neutral, merge-blocking pull request review after successful CI.
+
+inputs:
+  repository:
+    description: Repository containing the pull request.
+    required: true
+  workflow-run-id:
+    description: GitHub Actions run ID of the completed product CI workflow.
+    required: true
+  github-token:
+    description: Token with actions, contents, and pull-requests read plus checks write.
+    required: true
+  claude-code-oauth-token:
+    description: Claude credential; required only when policy selects Claude.
+    required: false
+  openai-api-key:
+    description: OpenAI credential; required only when policy selects Codex.
+    required: false
+
+outputs:
+  eligible:
+    description: Whether this run reviewed the pull request head.
+    value: ${{ steps.preflight.outputs.eligible }}
+  outcome:
+    description: Published review outcome.
+    value: ${{ steps.publish.outputs.outcome }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "22.22.1"
+
+    - name: Install pinned factory dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      run: corepack enable && pnpm install --frozen-lockfile --ignore-scripts
+
+    - name: Check review eligibility
+      id: preflight
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        WORKFLOW_RUN_ID: ${{ inputs.workflow-run-id }}
+      run: pnpm exec tsx src/review/action-runner.ts preflight
+
+    - name: Check out the reviewed head as evidence
+      id: checkout_pr
+      if: steps.preflight.outputs.eligible == 'true'
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ steps.preflight.outputs.head_sha }}
+        path: pr
+        fetch-depth: 0
+        persist-credentials: false
+        token: ${{ inputs.github-token }}
+
+    - name: Check out trusted guidance from the target branch
+      id: checkout_trusted
+      if: steps.preflight.outputs.eligible == 'true'
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ steps.preflight.outputs.base_sha }}
+        path: trusted
+        sparse-checkout: |
+          AGENTS.md
+          CLAUDE.md
+          docs/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+        token: ${{ inputs.github-token }}
+
+    - name: Check out review and TDD skills
+      if: steps.preflight.outputs.eligible == 'true'
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        repository: mattpocock/skills
+        ref: 49dd158d1076134a641b33efb035946536778336
+        path: .factory-skills/mattpocock
+        sparse-checkout: |
+          skills/engineering/code-review
+          skills/engineering/tdd
+        persist-credentials: false
+
+    - name: Check out Vitest skill
+      if: steps.preflight.outputs.eligible == 'true'
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        repository: antfu/skills
+        ref: feb0f3aba6566426f12230e7fc7a10d97c1293bb
+        path: .factory-skills/antfu
+        sparse-checkout: skills/vitest
+        persist-credentials: false
+
+    - name: Install pinned review skills for both providers
+      if: steps.preflight.outputs.eligible == 'true'
+      shell: bash
+      run: |
+        for home in "$RUNNER_TEMP/factory-claude-config" "$RUNNER_TEMP/factory-codex-home"; do
+          mkdir -p "$home/skills"
+          cp -R .factory-skills/mattpocock/skills/engineering/code-review "$home/skills/code-review"
+          cp -R .factory-skills/mattpocock/skills/engineering/tdd "$home/skills/tdd"
+          cp -R .factory-skills/antfu/skills/vitest "$home/skills/vitest"
+        done
+
+    - name: Review with Claude (attempt 1)
+      id: claude_1
+      if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'claude'
+      continue-on-error: true
+      uses: anthropics/claude-code-action@6c690188da61cf16ee7debb28383ba67f02abb4c # v1.0.242
+      env:
+        CLAUDE_CONFIG_DIR: ${{ runner.temp }}/factory-claude-config
+        CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+      with:
+        claude_code_oauth_token: ${{ inputs.claude-code-oauth-token }}
+        # Omitting this does not narrow access: the action falls back to github.token
+        # (the same job token) or an OIDC app exchange this job cannot perform.
+        github_token: ${{ inputs.github-token }}
+        display_report: "false"
+        include_fix_links: "false"
+        show_full_output: "false"
+        prompt: ${{ steps.preflight.outputs.prompt }}
+        claude_args: >-
+          --model ${{ steps.preflight.outputs.model }}
+          --max-turns 12
+          --allowedTools "Read" "Glob" "Grep" "Skill" "Bash(git -C pr diff:*)" "Bash(git -C pr show:*)" "Bash(git -C pr log:*)"
+          --disallowedTools "Edit" "Write" "NotebookEdit" "WebFetch" "WebSearch"
+          --json-schema '${{ steps.preflight.outputs.output_schema }}'
+
+    - name: Review with Codex (attempt 1)
+      id: codex_1
+      if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'codex'
+      continue-on-error: true
+      uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13
+      with:
+        openai-api-key: ${{ inputs.openai-api-key }}
+        prompt: ${{ steps.preflight.outputs.prompt }}
+        output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
+        model: ${{ steps.preflight.outputs.model }}
+        codex-home: ${{ runner.temp }}/factory-codex-home
+        permission-profile: ":read-only"
+        safety-strategy: drop-sudo
+
+    - name: Validate first review output
+      id: validate_1
+      if: steps.preflight.outputs.eligible == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
+        PROVIDER_OUTPUT: ${{ steps.claude_1.outputs.structured_output || steps.codex_1.outputs['final-message'] }}
+      run: pnpm exec tsx src/review/action-runner.ts validate
+
+    - name: Review with Claude (attempt 2)
+      id: claude_2
+      if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'claude' && steps.validate_1.outputs.valid != 'true'
+      continue-on-error: true
+      uses: anthropics/claude-code-action@6c690188da61cf16ee7debb28383ba67f02abb4c # v1.0.242
+      env:
+        CLAUDE_CONFIG_DIR: ${{ runner.temp }}/factory-claude-config
+        CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+      with:
+        claude_code_oauth_token: ${{ inputs.claude-code-oauth-token }}
+        # Omitting this does not narrow access: the action falls back to github.token
+        # (the same job token) or an OIDC app exchange this job cannot perform.
+        github_token: ${{ inputs.github-token }}
+        display_report: "false"
+        include_fix_links: "false"
+        show_full_output: "false"
+        prompt: ${{ steps.preflight.outputs.prompt }}
+        claude_args: >-
+          --model ${{ steps.preflight.outputs.model }}
+          --max-turns 12
+          --allowedTools "Read" "Glob" "Grep" "Skill" "Bash(git -C pr diff:*)" "Bash(git -C pr show:*)" "Bash(git -C pr log:*)"
+          --disallowedTools "Edit" "Write" "NotebookEdit" "WebFetch" "WebSearch"
+          --json-schema '${{ steps.preflight.outputs.output_schema }}'
+
+    - name: Review with Codex (attempt 2)
+      id: codex_2
+      if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'codex' && steps.validate_1.outputs.valid != 'true'
+      continue-on-error: true
+      uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13
+      with:
+        openai-api-key: ${{ inputs.openai-api-key }}
+        prompt: ${{ steps.preflight.outputs.prompt }}
+        output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
+        model: ${{ steps.preflight.outputs.model }}
+        codex-home: ${{ runner.temp }}/factory-codex-home
+        permission-profile: ":read-only"
+        safety-strategy: drop-sudo
+
+    - name: Publish the Factory PR Review check
+      id: publish
+      if: steps.preflight.outputs.eligible == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
+        PROVIDER_OUTPUT: ${{ steps.validate_1.outputs.valid == 'true' && (steps.claude_1.outputs.structured_output || steps.codex_1.outputs['final-message']) || (steps.claude_2.outputs.structured_output || steps.codex_2.outputs['final-message']) }}
+      run: pnpm exec tsx src/review/action-runner.ts publish
+
+    - name: Fail the pending check after an unfinished review
+      id: fail
+      if: always() && steps.preflight.outputs.eligible == 'true' && steps.publish.outcome != 'success'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
+        FAILURE_REASON: review job failed or was cancelled before publication
+      run: pnpm exec tsx src/review/action-runner.ts fail
