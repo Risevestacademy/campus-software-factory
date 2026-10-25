@@ -18,6 +18,7 @@ export interface ReviewGateInput {
 const qualityRulesetName = "factory-quality";
 const reviewCheckContext = "Factory PR Review";
 const protectedRefs = ["refs/heads/dev", "refs/heads/main"];
+const teamOwner = /^@[^/\s]+\/[^/\s]+$/;
 
 export function auditReviewGate(input: ReviewGateInput): DriftFinding[] {
   const findings = [...auditCodeowners(input)];
@@ -96,15 +97,18 @@ function auditCodeowners(input: ReviewGateInput): DriftFinding[] {
       return [];
     }
     const owners = line.split(/\s+/).slice(1);
-    const ownedByTeamOnly =
-      owners.length === 1 && owners[0]?.toLowerCase() === expectedOwner.toLowerCase();
-    return ownedByTeamOnly
+    const includesOwnerTeam = owners.some(
+      (owner) => owner.toLowerCase() === expectedOwner.toLowerCase(),
+    );
+    // Rulesets bypass only teams, so a user owner could approve but never match the bypass set.
+    const teamsOnly = owners.every((owner) => teamOwner.test(owner));
+    return includesOwnerTeam && teamsOnly
       ? []
       : [
           {
             kind: "changed" as const,
             path: `${input.repository}/CODEOWNERS:${index + 1}`,
-            expected: [expectedOwner],
+            expected: `includes ${expectedOwner}; team owners only`,
             actual: owners,
           },
         ];

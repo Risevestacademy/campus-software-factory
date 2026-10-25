@@ -56,6 +56,23 @@ describe("auditReviewGate", () => {
     ).toEqual([]);
   });
 
+  test("accepts specialist teams alongside the owner team", () => {
+    expect(
+      auditReviewGate(
+        input({
+          codeowners:
+            "* @Risevestacademy/campus-web\n/.github/ @Risevestacademy/campus-web @Risevestacademy/campus-security\n",
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("flags a rule that omits the owner team", () => {
+    expect(paths(input({ codeowners: "/docs/ @Risevestacademy/campus-security\n" }))).toEqual([
+      `${repository}/CODEOWNERS:1`,
+    ]);
+  });
+
   test("flags a CODEOWNERS line that names individual users", () => {
     expect(
       auditReviewGate(input({ codeowners: "* @lowlifehighway @aj1732\n" })),
@@ -63,7 +80,7 @@ describe("auditReviewGate", () => {
       {
         kind: "changed",
         path: `${repository}/CODEOWNERS:1`,
-        expected: ["@Risevestacademy/campus-web"],
+        expected: "includes @Risevestacademy/campus-web; team owners only",
         actual: ["@lowlifehighway", "@aj1732"],
       },
     ]);

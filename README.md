@@ -110,8 +110,8 @@ advisory and starts a new canary.
 ### Bypass
 
 Only the owner team named in `policies/repo-registry.yaml` may bypass, in
-`pull_request` mode. CODEOWNERS must name only that team; `pnpm
-drift:review-gate` enforces the match. See
+`pull_request` mode. Every CODEOWNERS rule must include that team, and owners
+must be teams; `pnpm drift:review-gate` enforces the match. See
 [the ruleset notes](policies/rulesets/README.md) for the known check-spoofing
 residual.
 

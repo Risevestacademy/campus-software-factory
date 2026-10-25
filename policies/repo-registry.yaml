@@ -3,13 +3,13 @@ version: 1
 repositories:
   - id: campus-web
     github: Risevestacademy/campus-web
-    ownerTeam: Risevestacademy/campus-web
+    ownerTeam: Risevestacademy/campus
     workflow: web
   - id: campus-server
     github: Risevestacademy/campus-server
-    ownerTeam: Risevestacademy/campus-server
+    ownerTeam: Risevestacademy/campus
     workflow: server
   - id: campus-mobile
     github: Risevestacademy/campus-mobile
-    ownerTeam: Risevestacademy/campus-mobile
+    ownerTeam: Risevestacademy/campus
     workflow: mobile

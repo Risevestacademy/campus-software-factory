@@ -16,15 +16,17 @@ For each audited repository, record two independently layered rulesets:
 
 ## Factory PR Review bypass
 
-GitHub rulesets cannot grant bypass to individual users, so each product's
-CODEOWNERS must name only its owner team from `policies/repo-registry.yaml`.
+GitHub rulesets cannot grant bypass to individual users, so every rule in
+each product's CODEOWNERS must include its owner team from
+`policies/repo-registry.yaml`, and every owner must be a team. Specialist teams
+may be listed alongside the owner team.
 That same team is the only `factory-quality` bypass actor, in `pull_request`
 mode, so every bypass is a recorded ruleset event on a pull request.
 
 `pnpm drift:review-gate` checks every repository whose review mode is not
 `disabled`:
 
-- every CODEOWNERS rule names only the owner team;
+- every CODEOWNERS rule includes the owner team and lists only teams;
 - the owner team exists;
 - `factory-quality` bypass is exactly that team in `pull_request` mode;
 - `factory-quality` covers both `dev` and `main`;
