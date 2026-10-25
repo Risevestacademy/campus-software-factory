@@ -4,16 +4,17 @@ import { promisify } from "node:util";
 
 import {
   parseReviewResult,
-  providerAdapter,
   renderReviewPrompt,
   reviewOutputSchemaPath,
   validateFindingLocations,
   type ReviewResult,
 } from "../../src/review/index.ts";
 import { loadFactoryReviewPolicies } from "../../src/review/policy-loader.ts";
+import { reviewOutputFromCli } from "./cli-output.ts";
 import { judge } from "./judge.ts";
 import {
   buildWorkspace,
+  formerFindingsCap,
   loadReviewCases,
   type ReviewCase,
   type ReviewWorkspace,
@@ -63,13 +64,21 @@ async function scoreModel(model: string) {
   const cleanCasesSilent = scores
     .filter((score) => score.expected.status === "clean")
     .every((score) => score.passed);
+  const uncappedCasesComplete = scores
+    .filter(
+      (score) =>
+        score.expected.status === "findings" &&
+        score.expected.defects.length > formerFindingsCap,
+    )
+    .every((score) => score.passed);
   const score = passedCount / scores.length;
   return {
     model,
     score,
     passThreshold,
     cleanCasesSilent,
-    passed: score >= passThreshold && cleanCasesSilent,
+    uncappedCasesComplete,
+    passed: score >= passThreshold && cleanCasesSilent && uncappedCasesComplete,
     cases: scores,
   };
 }
@@ -137,12 +146,7 @@ async function review(
   );
   pending.child.stdin?.end();
   const { stdout } = await pending;
-  const envelope = JSON.parse(stdout) as { structured_output?: unknown; result?: unknown };
-  const raw =
-    envelope.structured_output === undefined
-      ? String(envelope.result ?? "")
-      : JSON.stringify(envelope.structured_output);
-  const result = parseReviewResult(providerAdapter("claude").outputFrom(raw));
+  const result = parseReviewResult(reviewOutputFromCli(stdout));
   if (result.status === "findings") {
     validateFindingLocations(result.findings, workspace.changedFiles);
   }

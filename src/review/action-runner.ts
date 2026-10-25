@@ -1,4 +1,4 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
 import { formatNotice, formatOutput } from "./github-output.ts";
 import { GitHubRestAdapter } from "./github-rest-adapter.ts";
@@ -65,7 +65,7 @@ switch (phase) {
   case "validate": {
     const decision = await execution.validate({
       ticket: decodeTicket(required("REVIEW_TICKET")),
-      modelOutputJson: adapter.outputFrom(optional("PROVIDER_OUTPUT")),
+      modelOutputJson: adapter.outputFrom(readProviderOutput()),
     });
     writeOutput("valid", String(decision.valid));
     if (!decision.valid) {
@@ -77,7 +77,7 @@ switch (phase) {
   case "publish": {
     const result = await execution.publish({
       ticket: decodeTicket(required("REVIEW_TICKET")),
-      modelOutputJson: adapter.outputFrom(optional("PROVIDER_OUTPUT")),
+      modelOutputJson: adapter.outputFrom(readProviderOutput()),
     });
     writeOutput("outcome", result.outcome);
     writeOutput("conclusion", result.conclusion);
@@ -107,6 +107,12 @@ function required(name: string): string {
 
 function optional(name: string): string {
   return process.env[name] ?? "";
+}
+
+// Model output travels by file because Linux caps one environment string at 128 KiB.
+function readProviderOutput(): string {
+  const path = required("REVIEW_OUTPUT_FILE");
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
 }
 
 function positiveInteger(value: string, label: string): number {

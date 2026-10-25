@@ -1,25 +1,5 @@
-import { readFileSync } from "node:fs";
-
-import { reviewOutputSchemaUrl } from "./contracts.ts";
+import { reviewOutputSchema } from "./contracts.ts";
 import type { ReviewTicket } from "./execution.ts";
-
-export interface ReviewOutputSchema {
-  properties: {
-    findings: {
-      maxItems: number;
-      items: { properties: { confidence: { minimum: number } } };
-    };
-  };
-  [keyword: string]: unknown;
-}
-
-export function reviewOutputSchema(): ReviewOutputSchema {
-  return JSON.parse(readFileSync(reviewOutputSchemaUrl, "utf8")) as ReviewOutputSchema;
-}
-
-export function reviewOutputSchemaPath(): string {
-  return reviewOutputSchemaUrl.pathname;
-}
 
 export function renderReviewPrompt(ticket: ReviewTicket): string {
   const purpose = ticket.purpose.replaceAll("</pr-purpose>", "<\\/pr-purpose>");
@@ -51,8 +31,9 @@ Review on two separate axes:
 1. Standards: violations of the trusted repository standards.
 2. Spec: defects that prevent the stated purpose or acceptance outcome.
 
-Report at most ${maxItems} defects, each with confidence of at least ${minimumConfidence}. Every
-finding must name a path changed by this pull request and a line inside one of
+Report every defect with confidence of at least ${minimumConfidence}. If more
+than ${maxItems} exist, report the ${maxItems} most severe. Every finding must
+name a path changed by this pull request and a line inside one of
 its changed hunks on the new side. For a defect caused by deleted code, anchor
 it on the nearest changed line that remains. Every finding needs evidence, the
 concrete failure scenario, the smallest required change, and its standards or

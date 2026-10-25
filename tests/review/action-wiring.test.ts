@@ -7,6 +7,7 @@ interface ActionStep {
   id?: string;
   name?: string;
   if?: string;
+  run?: string;
   uses?: string;
   with?: Record<string, string>;
   env?: Record<string, string>;
@@ -44,9 +45,11 @@ describe("Factory PR Review composite action wiring", () => {
       "checkout_trusted",
       "claude_1",
       "codex_1",
+      "keep_1",
       "validate_1",
       "claude_2",
       "codex_2",
+      "keep_2",
       "publish",
       "fail",
     ].map(indexOf);
@@ -89,6 +92,49 @@ describe("Factory PR Review composite action wiring", () => {
     for (const id of ["claude_2", "codex_2"]) {
       expect(step(id).if).toContain("steps.validate_1.outputs.valid != 'true'");
     }
+  });
+
+  test("never passes model output through an environment variable or input", () => {
+    for (const entry of steps) {
+      expect(text(entry), entry.id).not.toContain("structured_output");
+      expect(text(entry), entry.id).not.toContain("final-message");
+    }
+  });
+
+  test("writes each Codex attempt to its own output file", () => {
+    expect(step("codex_1").with?.["output-file"]).toBe(
+      "${{ runner.temp }}/factory-codex-output-1.txt",
+    );
+    expect(step("codex_2").with?.["output-file"]).toBe(
+      "${{ runner.temp }}/factory-codex-output-2.txt",
+    );
+    expect(step("keep_1").env?.CODEX_FILE).toBe(step("codex_1").with?.["output-file"]);
+    expect(step("keep_2").env?.CODEX_FILE).toBe(step("codex_2").with?.["output-file"]);
+  });
+
+  test("keeps each attempt's output from that attempt's own steps", () => {
+    for (const attempt of ["1", "2"]) {
+      const keep = step(`keep_${attempt}`);
+      expect(keep.run).toBe('bash "$GITHUB_ACTION_PATH/keep-output.sh"');
+      expect(keep.env?.CLAUDE_OUTCOME).toBe(`\${{ steps.claude_${attempt}.outcome }}`);
+      expect(keep.env?.CLAUDE_FILE).toBe(
+        `\${{ steps.claude_${attempt}.outputs.execution_file }}`,
+      );
+      expect(keep.env?.CODEX_OUTCOME).toBe(`\${{ steps.codex_${attempt}.outcome }}`);
+      expect(keep.env?.REVIEW_OUTPUT_FILE).toBe(
+        `\${{ runner.temp }}/factory-review-output-${attempt}`,
+      );
+    }
+    expect(step("keep_2").if).toContain("steps.validate_1.outputs.valid != 'true'");
+  });
+
+  test("validates attempt 1 and publishes the attempt that was validated", () => {
+    expect(step("validate_1").env?.REVIEW_OUTPUT_FILE).toBe(
+      "${{ runner.temp }}/factory-review-output-1",
+    );
+    expect(step("publish").env?.REVIEW_OUTPUT_FILE).toBe(
+      "${{ runner.temp }}/factory-review-output-${{ steps.validate_1.outputs.valid == 'true' && '1' || '2' }}",
+    );
   });
 
   test("completes a pending check as technical on any later failure or cancellation", () => {

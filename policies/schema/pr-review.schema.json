@@ -28,10 +28,10 @@
       ],
       "properties": {
         "version": {
-          "const": 1
+          "const": 2
         },
         "maxFindings": {
-          "const": 3
+          "const": 50
         },
         "minimumConfidence": {
           "const": 0.9

@@ -1,0 +1,55 @@
+{
+  "name": "defect-several",
+  "purpose": "Add order pricing in cents. subtotal sums priceCents times quantity for every line. discount takes 10% off a subtotal of 10000 cents or more, otherwise 0. shipping costs 500 cents below a 5000-cent subtotal and is free from 5000 cents upward. total is subtotal minus discount plus shipping. formatCents renders cents as dollars with exactly two decimals: 1230 becomes \"$12.30\".",
+  "base": {
+    "README.md": "# Shop\n"
+  },
+  "head": {
+    "src/orders.ts": "export interface Line {\n  priceCents: number;\n  quantity: number;\n}\n\nexport function subtotal(lines: Line[]): number {\n  return lines.reduce((sum, line) => sum + line.priceCents, 0);\n}\n\nexport function discount(subtotalCents: number): number {\n  return subtotalCents > 10_000 ? Math.round(subtotalCents * 0.1) : 0;\n}\n\nexport function shipping(subtotalCents: number): number {\n  return subtotalCents >= 5_000 ? 500 : 0;\n}\n\nexport function total(lines: Line[]): number {\n  const amount = subtotal(lines);\n  return amount + discount(amount) + shipping(amount);\n}\n\nexport function formatCents(cents: number): string {\n  return `$${cents / 100}`;\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "defects": [
+      {
+        "path": "src/orders.ts",
+        "lines": [
+          6,
+          8
+        ],
+        "severity": "P1"
+      },
+      {
+        "path": "src/orders.ts",
+        "lines": [
+          10,
+          12
+        ],
+        "severity": "P2"
+      },
+      {
+        "path": "src/orders.ts",
+        "lines": [
+          14,
+          16
+        ],
+        "severity": "P1"
+      },
+      {
+        "path": "src/orders.ts",
+        "lines": [
+          18,
+          21
+        ],
+        "severity": "P1"
+      },
+      {
+        "path": "src/orders.ts",
+        "lines": [
+          23,
+          25
+        ],
+        "severity": "P2"
+      }
+    ]
+  }
+}

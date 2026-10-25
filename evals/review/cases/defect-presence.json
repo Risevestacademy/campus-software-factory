@@ -11,11 +11,15 @@
   },
   "expect": {
     "status": "findings",
-    "path": "src/session.ts",
-    "lines": [
-      5,
-      7
-    ],
-    "severity": "P1"
+    "defects": [
+      {
+        "path": "src/session.ts",
+        "lines": [
+          5,
+          7
+        ],
+        "severity": "P1"
+      }
+    ]
   }
 }

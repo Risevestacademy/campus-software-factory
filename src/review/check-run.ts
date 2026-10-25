@@ -1,4 +1,9 @@
-import type { ProviderId, ReviewFinding } from "./contracts.ts";
+import {
+  findingsCeiling,
+  severityRank,
+  type ProviderId,
+  type ReviewFinding,
+} from "./contracts.ts";
 import type { ReviewMode } from "./provider-policy.ts";
 
 export const checkRunName = "Factory PR Review";
@@ -29,6 +34,11 @@ export interface CheckAnnotation {
   message: string;
 }
 
+interface ReportDetails {
+  purpose?: string | null;
+  annotations?: CheckAnnotation[];
+}
+
 export interface CheckRunReport {
   name: typeof checkRunName;
   conclusion: "success" | "failure" | "neutral";
@@ -37,6 +47,12 @@ export interface CheckRunReport {
   summary: string;
   annotations: CheckAnnotation[];
 }
+
+// GitHub rejects a check-run summary longer than this.
+export const checkRunSummaryLimit = 65_535;
+const paragraphBreak = "\n\n";
+const purposeLabel = "**PR purpose:** ";
+const purposeTruncationMarker = " … (truncated)";
 
 const externalIdPattern =
   /^factory-review:v1:(pending|clean|findings|missing-purpose|technical|fork):(\d+)$/;
@@ -49,30 +65,34 @@ export function buildCheckRunReport(
     conclusion: CheckRunReport["conclusion"],
     title: string,
     body: string,
-    annotations: CheckAnnotation[] = [],
+    { purpose = null, annotations = [] }: ReportDetails = {},
   ): CheckRunReport => ({
     name: checkRunName,
     conclusion,
     externalId: externalId(outcome.kind, context.ciRunId),
     title,
-    summary: [body, footer(context)].join("\n\n"),
+    summary: composeSummary(purpose, body, footer(context)),
     annotations,
   });
+  const { purpose } = context;
 
   switch (outcome.kind) {
     case "clean":
       return report(
         "success",
         "No blocking findings",
-        withPurpose(context, "The review found no change that must be made before merge."),
+        "The review found no change that must be made before merge.",
+        { purpose },
       );
-    case "findings":
+    case "findings": {
+      const findings = bySeverity(outcome.findings);
       return report(
         "failure",
-        `${outcome.findings.length} blocking finding${outcome.findings.length === 1 ? "" : "s"}`,
-        withPurpose(context, formatFindingSections(outcome.findings)),
-        outcome.findings.map(toAnnotation),
+        `${findings.length} blocking finding${findings.length === 1 ? "" : "s"}`,
+        formatFindingSections(findings) + ceilingNotice(findings),
+        { purpose, annotations: findings.map(toAnnotation) },
       );
+    }
     case "missing-purpose":
       return outcome.reason === "absent"
         ? report(
@@ -83,10 +103,8 @@ export function buildCheckRunReport(
         : report(
             "failure",
             "PR purpose too vague",
-            withPurpose(
-              context,
-              "The reviewer judged `## Change and measurable outcome` too vague to review against. Name the behavior or metric that changes, then re-run this workflow.",
-            ),
+            "The reviewer judged `## Change and measurable outcome` too vague to review against. Name the behavior or metric that changes, then re-run this workflow.",
+            { purpose },
           );
     case "technical":
       return report(
@@ -112,7 +130,7 @@ export function formatFindingSections(findings: readonly ReviewFinding[]): strin
       const content =
         matchingFindings.length === 0
           ? "No requested changes."
-          : matchingFindings.map(formatFinding).join("\n\n");
+          : matchingFindings.map(formatFindingLine).join("\n");
       return `## ${axis === "standards" ? "Standards" : "Spec"}\n\n${content}`;
     })
     .join("\n\n");
@@ -136,12 +154,6 @@ export function isDecisiveOutcome(tag: CheckOutcomeTag): boolean {
   return tag === "clean" || tag === "findings";
 }
 
-function withPurpose(context: CheckRunContext, body: string): string {
-  return context.purpose === null
-    ? body
-    : `**PR purpose:** ${context.purpose}\n\n${body}`;
-}
-
 function footer(context: CheckRunContext): string {
   const modeLine =
     context.mode === "enforced"
@@ -155,15 +167,37 @@ function footer(context: CheckRunContext): string {
   ].join("\n");
 }
 
-function formatFinding(finding: ReviewFinding): string {
-  return [
-    `### ${finding.severity}: ${finding.title}`,
-    `- Location: \`${finding.path}:${finding.line}\``,
-    `- Evidence: ${finding.evidence}`,
-    `- Failure scenario: ${finding.failureScenario}`,
-    `- Required change: ${finding.requestedChange}`,
-    `- Basis: ${finding.source}`,
-  ].join("\n");
+function bySeverity(findings: readonly ReviewFinding[]): ReviewFinding[] {
+  return [...findings].sort(
+    (left, right) => severityRank[left.severity] - severityRank[right.severity],
+  );
+}
+
+function ceilingNotice(findings: readonly ReviewFinding[]): string {
+  return findings.length >= findingsCeiling
+    ? `\n\n**Ceiling reached:** GitHub accepts ${findingsCeiling} annotations per update, so more findings may exist. Split this pull request.`
+    : "";
+}
+
+// Detail lives in the annotations; one line per finding keeps the summary under GitHub's limit.
+function formatFindingLine(finding: ReviewFinding): string {
+  return `- **${finding.severity}** ${finding.title} (\`${finding.path}:${finding.line}\`)`;
+}
+
+// The purpose is author-written and unbounded; findings and the footer are
+// bounded by the output schema, so only the purpose is ever shortened.
+function composeSummary(purpose: string | null, body: string, footerText: string): string {
+  const fixed = `${body}${paragraphBreak}${footerText}`;
+  if (purpose === null) {
+    return fixed;
+  }
+  const room =
+    checkRunSummaryLimit - fixed.length - purposeLabel.length - paragraphBreak.length;
+  const shown =
+    purpose.length <= room
+      ? purpose
+      : `${purpose.slice(0, room - purposeTruncationMarker.length)}${purposeTruncationMarker}`;
+  return `${purposeLabel}${shown}${paragraphBreak}${fixed}`;
 }
 
 function toAnnotation(finding: ReviewFinding): CheckAnnotation {
@@ -177,6 +211,7 @@ function toAnnotation(finding: ReviewFinding): CheckAnnotation {
       finding.evidence,
       `Failure scenario: ${finding.failureScenario}`,
       `Required change: ${finding.requestedChange}`,
+      `Basis: ${finding.source}`,
     ].join("\n\n"),
   };
 }

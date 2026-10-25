@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { createJsonParser } from "../schema/index.ts";
 
 export type ProviderId = "claude" | "codex";
@@ -14,6 +16,12 @@ export interface ReviewFinding {
   requestedChange: string;
   source: string;
 }
+
+export const severityRank: Readonly<Record<ReviewFinding["severity"], number>> = {
+  P0: 0,
+  P1: 1,
+  P2: 2,
+};
 
 export type ReviewResult =
   | { status: "clean" | "missing_spec"; findings: [] }
@@ -34,10 +42,32 @@ interface ReviewOutput {
   findings: ReviewFinding[];
 }
 
+export interface ReviewOutputSchema {
+  properties: {
+    findings: {
+      maxItems: number;
+      items: { properties: { confidence: { minimum: number } } };
+    };
+  };
+  [keyword: string]: unknown;
+}
+
 export const reviewOutputSchemaUrl = new URL(
   "../../policies/schema/review-output.schema.json",
   import.meta.url,
 );
+
+export function reviewOutputSchema(): ReviewOutputSchema {
+  return JSON.parse(readFileSync(reviewOutputSchemaUrl, "utf8")) as ReviewOutputSchema;
+}
+
+export function reviewOutputSchemaPath(): string {
+  return reviewOutputSchemaUrl.pathname;
+}
+
+// rubric.maxFindings tracks GitHub's annotation limit per check-run update, so
+// every finding publishes in one update. Raising it means batching annotations.
+export const findingsCeiling = reviewOutputSchema().properties.findings.maxItems;
 
 const hunkHeader = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm;
 const findingTextFields = [

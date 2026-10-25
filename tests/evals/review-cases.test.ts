@@ -2,7 +2,11 @@ import { rm } from "node:fs/promises";
 
 import { describe, expect, test } from "vitest";
 
-import { buildWorkspace, loadReviewCases } from "../../evals/review/workspace.js";
+import {
+  buildWorkspace,
+  formerFindingsCap,
+  loadReviewCases,
+} from "../../evals/review/workspace.js";
 import { newSideLineRanges } from "../../src/review/index.js";
 
 const cases = loadReviewCases();
@@ -16,9 +20,21 @@ describe("review eval cases", () => {
   test("give every seeded defect the severity it must be reported at", () => {
     for (const entry of cases) {
       if (entry.expect.status === "findings") {
-        expect(["P0", "P1", "P2"], entry.name).toContain(entry.expect.severity);
+        for (const defect of entry.expect.defects) {
+          expect(["P0", "P1", "P2"], entry.name).toContain(defect.severity);
+        }
       }
     }
+  });
+
+  test("include a case seeding more defects than rubric v1 could post", () => {
+    expect(
+      cases.some(
+        (entry) =>
+          entry.expect.status === "findings" &&
+          entry.expect.defects.length > formerFindingsCap,
+      ),
+    ).toBe(true);
   });
 
   test.each(cases.map((entry) => [entry.name, entry] as const))(
@@ -27,8 +43,8 @@ describe("review eval cases", () => {
       const workspace = await buildWorkspace(reviewCase);
       try {
         expect(workspace.changedFiles.length).toBeGreaterThan(0);
-        if (reviewCase.expect.status === "findings") {
-          const { path, lines } = reviewCase.expect;
+        const defects = reviewCase.expect.status === "findings" ? reviewCase.expect.defects : [];
+        for (const { path, lines } of defects) {
           const file = workspace.changedFiles.find((entry) => entry.path === path);
           const ranges = newSideLineRanges(file?.patch ?? "");
           expect(

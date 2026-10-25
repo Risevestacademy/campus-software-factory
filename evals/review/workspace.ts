@@ -6,14 +6,18 @@ import { dirname, join } from "node:path";
 
 import type { ChangedFile, ReviewFinding } from "../../src/review/index.ts";
 
+// Rubric v1 posted at most this many findings; a case seeding more proves none are dropped.
+export const formerFindingsCap = 3;
+
+export interface SeededDefect {
+  path: string;
+  lines: [number, number];
+  severity: ReviewFinding["severity"];
+}
+
 export type ExpectedReview =
   | { status: "clean" }
-  | {
-      status: "findings";
-      path: string;
-      lines: [number, number];
-      severity: ReviewFinding["severity"];
-    };
+  | { status: "findings"; defects: SeededDefect[] };
 
 export interface ReviewCase {
   name: string;
@@ -112,23 +116,15 @@ function parseCase(value: unknown, file: string): ReviewCase {
   if (status === "clean") {
     expected = { status };
   } else if (status === "findings") {
-    const lines = expectation.lines;
-    if (
-      !Array.isArray(lines) ||
-      lines.length !== 2 ||
-      !lines.every((line) => Number.isSafeInteger(line) && (line as number) > 0)
-    ) {
-      throw new Error(`${file} expect.lines must be [start, end]`);
-    }
-    const severity = expectation.severity;
-    if (severity !== "P0" && severity !== "P1" && severity !== "P2") {
-      throw new Error(`${file} expect.severity must be "P0", "P1", or "P2"`);
+    const defects = expectation.defects;
+    if (!Array.isArray(defects) || defects.length === 0) {
+      throw new Error(`${file} expect.defects must be a non-empty array`);
     }
     expected = {
       status,
-      path: requireString(expectation.path, `${file} expect.path`),
-      lines: [lines[0] as number, lines[1] as number],
-      severity,
+      defects: defects.map((defect, index) =>
+        parseDefect(defect, `${file} expect.defects[${index}]`),
+      ),
     };
   } else {
     throw new Error(`${file} expect.status must be "clean" or "findings"`);
@@ -139,6 +135,27 @@ function parseCase(value: unknown, file: string): ReviewCase {
     base: requireFiles(entry.base, `${file} base`),
     head: requireFiles(entry.head, `${file} head`),
     expect: expected,
+  };
+}
+
+function parseDefect(value: unknown, label: string): SeededDefect {
+  const defect = requireObject(value, label);
+  const lines = defect.lines;
+  if (
+    !Array.isArray(lines) ||
+    lines.length !== 2 ||
+    !lines.every((line) => Number.isSafeInteger(line) && (line as number) > 0)
+  ) {
+    throw new Error(`${label}.lines must be [start, end]`);
+  }
+  const severity = defect.severity;
+  if (severity !== "P0" && severity !== "P1" && severity !== "P2") {
+    throw new Error(`${label}.severity must be "P0", "P1", or "P2"`);
+  }
+  return {
+    path: requireString(defect.path, `${label}.path`),
+    lines: [lines[0] as number, lines[1] as number],
+    severity,
   };
 }
 
