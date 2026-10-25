@@ -4,16 +4,17 @@ import { promisify } from "node:util";
 
 import {
   parseReviewResult,
-  providerAdapter,
   renderReviewPrompt,
   reviewOutputSchemaPath,
   validateFindingLocations,
   type ReviewResult,
 } from "../../src/review/index.ts";
 import { loadFactoryReviewPolicies } from "../../src/review/policy-loader.ts";
+import { reviewOutputFromCli } from "./cli-output.ts";
 import { judge } from "./judge.ts";
 import {
   buildWorkspace,
+  formerFindingsCap,
   loadReviewCases,
   type ReviewCase,
   type ReviewWorkspace,
@@ -21,8 +22,6 @@ import {
 
 const run = promisify(execFile);
 const passThreshold = 0.75;
-// The old rubric posted at most 3 findings; a case with more proves none are dropped.
-const formerFindingsCap = 3;
 const caseTimeoutMilliseconds = 10 * 60 * 1_000;
 
 interface CaseScore {
@@ -147,12 +146,7 @@ async function review(
   );
   pending.child.stdin?.end();
   const { stdout } = await pending;
-  const envelope = JSON.parse(stdout) as { structured_output?: unknown; result?: unknown };
-  const raw =
-    envelope.structured_output === undefined
-      ? String(envelope.result ?? "")
-      : JSON.stringify(envelope.structured_output);
-  const result = parseReviewResult(providerAdapter("claude").outputFrom(raw));
+  const result = parseReviewResult(reviewOutputFromCli(stdout));
   if (result.status === "findings") {
     validateFindingLocations(result.findings, workspace.changedFiles);
   }

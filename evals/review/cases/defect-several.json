@@ -16,7 +16,7 @@
           6,
           8
         ],
-        "severity": "P2"
+        "severity": "P1"
       },
       {
         "path": "src/orders.ts",
@@ -32,7 +32,7 @@
           14,
           16
         ],
-        "severity": "P2"
+        "severity": "P1"
       },
       {
         "path": "src/orders.ts",
@@ -40,7 +40,7 @@
           18,
           21
         ],
-        "severity": "P2"
+        "severity": "P1"
       },
       {
         "path": "src/orders.ts",

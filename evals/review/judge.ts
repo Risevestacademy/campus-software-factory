@@ -1,16 +1,10 @@
-import type { ReviewFinding, ReviewResult } from "../../src/review/index.ts";
+import { severityRank, type ReviewResult } from "../../src/review/index.ts";
 import type { ExpectedReview, SeededDefect } from "./workspace.ts";
 
 export interface Judgement {
   passed: boolean;
   detail: string;
 }
-
-const severityRank: Readonly<Record<ReviewFinding["severity"], number>> = {
-  P0: 0,
-  P1: 1,
-  P2: 2,
-};
 
 export function judge(expected: ExpectedReview, result: ReviewResult): Judgement {
   if (expected.status === "clean") {

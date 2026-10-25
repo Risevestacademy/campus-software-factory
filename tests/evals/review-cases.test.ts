@@ -2,7 +2,11 @@ import { rm } from "node:fs/promises";
 
 import { describe, expect, test } from "vitest";
 
-import { buildWorkspace, loadReviewCases } from "../../evals/review/workspace.js";
+import {
+  buildWorkspace,
+  formerFindingsCap,
+  loadReviewCases,
+} from "../../evals/review/workspace.js";
 import { newSideLineRanges } from "../../src/review/index.js";
 
 const cases = loadReviewCases();
@@ -23,10 +27,12 @@ describe("review eval cases", () => {
     }
   });
 
-  test("include a case with more defects than the former cap of 3", () => {
+  test("include a case seeding more defects than rubric v1 could post", () => {
     expect(
       cases.some(
-        (entry) => entry.expect.status === "findings" && entry.expect.defects.length > 3,
+        (entry) =>
+          entry.expect.status === "findings" &&
+          entry.expect.defects.length > formerFindingsCap,
       ),
     ).toBe(true);
   });

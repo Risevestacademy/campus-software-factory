@@ -6,6 +6,9 @@ import { dirname, join } from "node:path";
 
 import type { ChangedFile, ReviewFinding } from "../../src/review/index.ts";
 
+// Rubric v1 posted at most this many findings; a case seeding more proves none are dropped.
+export const formerFindingsCap = 3;
+
 export interface SeededDefect {
   path: string;
   lines: [number, number];

@@ -125,7 +125,7 @@ describe("buildCheckRunReport", () => {
     expect(belowCeiling.summary).not.toContain("Ceiling reached");
   });
 
-  test("keeps the summary within GitHub's limit for the largest possible review", () => {
+  describe("at the largest review the output schema allows", () => {
     const largest: ReviewFinding = {
       ...finding,
       path: "p".repeat(500),
@@ -136,16 +136,33 @@ describe("buildCheckRunReport", () => {
       source: "s".repeat(500),
     };
     const findings = Array.from({ length: findingsCeiling }, () => largest);
+    const findingLine = `- **P1** ${largest.title} (\`${largest.path}:12\`)`;
 
-    const report = buildCheckRunReport(
-      { kind: "findings", findings },
-      { ...context, purpose: "x".repeat(100_000) },
-    );
+    function linesOf(summary: string): number {
+      return summary.split("\n").filter((line) => line === findingLine).length;
+    }
 
-    expect(report.summary.length).toBeLessThanOrEqual(checkRunSummaryLimit);
-    expect(report.summary).toContain("Summary truncated");
-    expect(report.summary).toContain("Reviewer: claude / claude-opus-5-5");
-    expect(report.annotations).toHaveLength(findingsCeiling);
+    test("fits every finding line without shortening a short purpose", () => {
+      const report = buildCheckRunReport({ kind: "findings", findings }, context);
+
+      expect(report.summary.length).toBeLessThanOrEqual(checkRunSummaryLimit);
+      expect(report.summary).toContain(`**PR purpose:** ${context.purpose}`);
+      expect(linesOf(report.summary)).toBe(findingsCeiling);
+    });
+
+    test("shortens only an oversized purpose and keeps every finding, the ceiling notice, and the footer", () => {
+      const report = buildCheckRunReport(
+        { kind: "findings", findings },
+        { ...context, purpose: "x".repeat(100_000) },
+      );
+
+      expect(report.summary.length).toBe(checkRunSummaryLimit);
+      expect(report.summary).toContain("x … (truncated)");
+      expect(linesOf(report.summary)).toBe(findingsCeiling);
+      expect(report.summary).toContain("Ceiling reached");
+      expect(report.summary).toContain("Reviewer: claude / claude-opus-5-5");
+      expect(report.annotations).toHaveLength(findingsCeiling);
+    });
   });
 
   test("fails a missing purpose and tells the author how to fix it", () => {

@@ -1,4 +1,9 @@
-import { findingsCeiling, type ProviderId, type ReviewFinding } from "./contracts.ts";
+import {
+  findingsCeiling,
+  severityRank,
+  type ProviderId,
+  type ReviewFinding,
+} from "./contracts.ts";
 import type { ReviewMode } from "./provider-policy.ts";
 
 export const checkRunName = "Factory PR Review";
@@ -29,6 +34,11 @@ export interface CheckAnnotation {
   message: string;
 }
 
+interface ReportDetails {
+  purpose?: string | null;
+  annotations?: CheckAnnotation[];
+}
+
 export interface CheckRunReport {
   name: typeof checkRunName;
   conclusion: "success" | "failure" | "neutral";
@@ -40,13 +50,9 @@ export interface CheckRunReport {
 
 // GitHub rejects a check-run summary longer than this.
 export const checkRunSummaryLimit = 65_535;
-const truncationNotice = "\n\n_Summary truncated to fit GitHub's limit. Every finding is still annotated._";
-
-const severityOrder: Readonly<Record<ReviewFinding["severity"], number>> = {
-  P0: 0,
-  P1: 1,
-  P2: 2,
-};
+const paragraphBreak = "\n\n";
+const purposeLabel = "**PR purpose:** ";
+const purposeTruncationMarker = " … (truncated)";
 
 const externalIdPattern =
   /^factory-review:v1:(pending|clean|findings|missing-purpose|technical|fork):(\d+)$/;
@@ -59,30 +65,32 @@ export function buildCheckRunReport(
     conclusion: CheckRunReport["conclusion"],
     title: string,
     body: string,
-    annotations: CheckAnnotation[] = [],
+    { purpose = null, annotations = [] }: ReportDetails = {},
   ): CheckRunReport => ({
     name: checkRunName,
     conclusion,
     externalId: externalId(outcome.kind, context.ciRunId),
     title,
-    summary: fitSummary(body, footer(context)),
+    summary: composeSummary(purpose, body, footer(context)),
     annotations,
   });
+  const { purpose } = context;
 
   switch (outcome.kind) {
     case "clean":
       return report(
         "success",
         "No blocking findings",
-        withPurpose(context, "The review found no change that must be made before merge."),
+        "The review found no change that must be made before merge.",
+        { purpose },
       );
     case "findings": {
       const findings = bySeverity(outcome.findings);
       return report(
         "failure",
         `${findings.length} blocking finding${findings.length === 1 ? "" : "s"}`,
-        withPurpose(context, formatFindingSections(findings) + ceilingNotice(findings)),
-        findings.map(toAnnotation),
+        formatFindingSections(findings) + ceilingNotice(findings),
+        { purpose, annotations: findings.map(toAnnotation) },
       );
     }
     case "missing-purpose":
@@ -95,10 +103,8 @@ export function buildCheckRunReport(
         : report(
             "failure",
             "PR purpose too vague",
-            withPurpose(
-              context,
-              "The reviewer judged `## Change and measurable outcome` too vague to review against. Name the behavior or metric that changes, then re-run this workflow.",
-            ),
+            "The reviewer judged `## Change and measurable outcome` too vague to review against. Name the behavior or metric that changes, then re-run this workflow.",
+            { purpose },
           );
     case "technical":
       return report(
@@ -148,12 +154,6 @@ export function isDecisiveOutcome(tag: CheckOutcomeTag): boolean {
   return tag === "clean" || tag === "findings";
 }
 
-function withPurpose(context: CheckRunContext, body: string): string {
-  return context.purpose === null
-    ? body
-    : `**PR purpose:** ${context.purpose}\n\n${body}`;
-}
-
 function footer(context: CheckRunContext): string {
   const modeLine =
     context.mode === "enforced"
@@ -169,7 +169,7 @@ function footer(context: CheckRunContext): string {
 
 function bySeverity(findings: readonly ReviewFinding[]): ReviewFinding[] {
   return [...findings].sort(
-    (left, right) => severityOrder[left.severity] - severityOrder[right.severity],
+    (left, right) => severityRank[left.severity] - severityRank[right.severity],
   );
 }
 
@@ -184,13 +184,20 @@ function formatFindingLine(finding: ReviewFinding): string {
   return `- **${finding.severity}** ${finding.title} (\`${finding.path}:${finding.line}\`)`;
 }
 
-function fitSummary(body: string, footerText: string): string {
-  const summary = `${body}\n\n${footerText}`;
-  if (summary.length <= checkRunSummaryLimit) {
-    return summary;
+// The purpose is author-written and unbounded; findings and the footer are
+// bounded by the output schema, so only the purpose is ever shortened.
+function composeSummary(purpose: string | null, body: string, footerText: string): string {
+  const fixed = `${body}${paragraphBreak}${footerText}`;
+  if (purpose === null) {
+    return fixed;
   }
-  const room = checkRunSummaryLimit - footerText.length - truncationNotice.length - 2;
-  return `${body.slice(0, room)}${truncationNotice}\n\n${footerText}`;
+  const room =
+    checkRunSummaryLimit - fixed.length - purposeLabel.length - paragraphBreak.length;
+  const shown =
+    purpose.length <= room
+      ? purpose
+      : `${purpose.slice(0, room - purposeTruncationMarker.length)}${purposeTruncationMarker}`;
+  return `${purposeLabel}${shown}${paragraphBreak}${fixed}`;
 }
 
 function toAnnotation(finding: ReviewFinding): CheckAnnotation {

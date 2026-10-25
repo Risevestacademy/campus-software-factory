@@ -17,6 +17,12 @@ export interface ReviewFinding {
   source: string;
 }
 
+export const severityRank: Readonly<Record<ReviewFinding["severity"], number>> = {
+  P0: 0,
+  P1: 1,
+  P2: 2,
+};
+
 export type ReviewResult =
   | { status: "clean" | "missing_spec"; findings: [] }
   | { status: "findings"; findings: ReviewFinding[] };
@@ -59,7 +65,8 @@ export function reviewOutputSchemaPath(): string {
   return reviewOutputSchemaUrl.pathname;
 }
 
-// The ceiling is GitHub's 50-annotation limit per check-run update, not a rubric choice.
+// rubric.maxFindings tracks GitHub's annotation limit per check-run update, so
+// every finding publishes in one update. Raising it means batching annotations.
 export const findingsCeiling = reviewOutputSchema().properties.findings.maxItems;
 
 const hunkHeader = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm;

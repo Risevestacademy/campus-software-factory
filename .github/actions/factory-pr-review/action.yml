@@ -143,11 +143,25 @@ runs:
       with:
         openai-api-key: ${{ inputs.openai-api-key }}
         prompt: ${{ steps.preflight.outputs.prompt }}
+        output-file: ${{ runner.temp }}/factory-codex-output-1.txt
         output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
         model: ${{ steps.preflight.outputs.model }}
         codex-home: ${{ runner.temp }}/factory-codex-home
         permission-profile: ":read-only"
         safety-strategy: drop-sudo
+
+    - name: Keep review output (attempt 1)
+      id: keep_1
+      if: steps.preflight.outputs.eligible == 'true'
+      shell: bash
+      env:
+        PROVIDER: ${{ steps.preflight.outputs.provider }}
+        CLAUDE_OUTCOME: ${{ steps.claude_1.outcome }}
+        CLAUDE_FILE: ${{ steps.claude_1.outputs.execution_file }}
+        CODEX_OUTCOME: ${{ steps.codex_1.outcome }}
+        CODEX_FILE: ${{ runner.temp }}/factory-codex-output-1.txt
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-1
+      run: bash "$GITHUB_ACTION_PATH/keep-output.sh"
 
     - name: Validate first review output
       id: validate_1
@@ -159,7 +173,7 @@ runs:
         GITHUB_API_URL: ${{ github.api_url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
-        PROVIDER_OUTPUT: ${{ steps.claude_1.outputs.structured_output || steps.codex_1.outputs['final-message'] }}
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-1
       run: pnpm exec tsx src/review/action-runner.ts validate
 
     - name: Review with Claude (attempt 2)
@@ -194,11 +208,25 @@ runs:
       with:
         openai-api-key: ${{ inputs.openai-api-key }}
         prompt: ${{ steps.preflight.outputs.prompt }}
+        output-file: ${{ runner.temp }}/factory-codex-output-2.txt
         output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
         model: ${{ steps.preflight.outputs.model }}
         codex-home: ${{ runner.temp }}/factory-codex-home
         permission-profile: ":read-only"
         safety-strategy: drop-sudo
+
+    - name: Keep review output (attempt 2)
+      id: keep_2
+      if: steps.preflight.outputs.eligible == 'true' && steps.validate_1.outputs.valid != 'true'
+      shell: bash
+      env:
+        PROVIDER: ${{ steps.preflight.outputs.provider }}
+        CLAUDE_OUTCOME: ${{ steps.claude_2.outcome }}
+        CLAUDE_FILE: ${{ steps.claude_2.outputs.execution_file }}
+        CODEX_OUTCOME: ${{ steps.codex_2.outcome }}
+        CODEX_FILE: ${{ runner.temp }}/factory-codex-output-2.txt
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-2
+      run: bash "$GITHUB_ACTION_PATH/keep-output.sh"
 
     - name: Publish the Factory PR Review check
       id: publish
@@ -210,7 +238,7 @@ runs:
         GITHUB_API_URL: ${{ github.api_url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
-        PROVIDER_OUTPUT: ${{ steps.validate_1.outputs.valid == 'true' && (steps.claude_1.outputs.structured_output || steps.codex_1.outputs['final-message']) || (steps.claude_2.outputs.structured_output || steps.codex_2.outputs['final-message']) }}
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-${{ steps.validate_1.outputs.valid == 'true' && '1' || '2' }}
       run: pnpm exec tsx src/review/action-runner.ts publish
 
     - name: Fail the pending check after an unfinished review
