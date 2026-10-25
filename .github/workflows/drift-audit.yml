@@ -45,18 +45,45 @@ jobs:
           else
             echo "detected=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Audit the factory review gate
+        id: review_gate
+        env:
+          FACTORY_AUDIT_TOKEN: ${{ secrets.FACTORY_AUDIT_TOKEN }}
+          GATE_REPORT: ${{ runner.temp }}/review-gate-report.json
+        run: |
+          set +e
+          pnpm drift:review-gate > "$GATE_REPORT"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Open a drift issue
-        if: steps.drift.outputs.detected == 'true'
+        if: steps.drift.outputs.detected == 'true' || steps.review_gate.outputs.detected == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DRIFT_REPORT: ${{ runner.temp }}/drift-report.json
+          GATE_REPORT: ${{ runner.temp }}/review-gate-report.json
+          ISSUE_BODY: ${{ runner.temp }}/drift-issue.md
         run: |
+          {
+            echo "## Ruleset drift"
+            echo '```json'
+            cat "$DRIFT_REPORT"
+            echo '```'
+            echo "## Review gate drift"
+            echo '```json'
+            cat "$GATE_REPORT"
+            echo '```'
+          } > "$ISSUE_BODY"
           existing="$(gh issue list --state open --search 'Factory ruleset drift in:title' --json number --jq '.[0].number // empty')"
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body-file "$DRIFT_REPORT"
+            gh issue comment "$existing" --body-file "$ISSUE_BODY"
           else
-            gh issue create --title "Factory ruleset drift" --body-file "$DRIFT_REPORT"
+            gh issue create --title "Factory ruleset drift" --body-file "$ISSUE_BODY"
           fi
       - name: Fail when drift exists
-        if: steps.drift.outputs.detected == 'true'
+        if: steps.drift.outputs.detected == 'true' || steps.review_gate.outputs.detected == 'true'
         run: exit 1

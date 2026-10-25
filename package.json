@@ -10,8 +10,11 @@
   "scripts": {
     "drift:collect": "tsx src/drift/github-collector.ts",
     "drift:check": "tsx src/drift/cli.ts",
+    "drift:review-gate": "tsx src/drift/review-gate-cli.ts",
     "metrics:report": "tsx src/metrics/cli.ts",
     "policy:validate": "tsx src/policy/cli.ts",
+    "review:eval": "tsx evals/review/run.ts",
+    "review:evaluate": "tsx src/review/canary-cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

@@ -43,6 +43,43 @@ export async function collectRepository(
   };
 }
 
+const codeownersLocations = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"];
+
+export async function collectCodeowners(
+  repository: string,
+  authorizationToken: string,
+): Promise<string | null> {
+  for (const location of codeownersLocations) {
+    const file = await requestOptionalJson(
+      `/repos/${repository}/contents/${location}`,
+      authorizationToken,
+    );
+    if (file !== null) {
+      const content = requireString(
+        requireObject(file, "CODEOWNERS file").content,
+        "CODEOWNERS content",
+      );
+      return Buffer.from(content, "base64").toString("utf8");
+    }
+  }
+  return null;
+}
+
+export async function resolveTeamId(
+  organizationTeam: string,
+  authorizationToken: string,
+): Promise<number | null> {
+  const [organization, slug] = organizationTeam.split("/");
+  if (organization === undefined || slug === undefined || slug.length === 0) {
+    throw new Error(`Owner team "${organizationTeam}" must be "organization/team-slug"`);
+  }
+  const team = await requestOptionalJson(
+    `/orgs/${organization}/teams/${slug}`,
+    authorizationToken,
+  );
+  return team === null ? null : requireNumber(requireObject(team, "team").id, "team id");
+}
+
 export function normalizeRuleset(value: unknown): RulesetDefinition {
   const ruleset = requireObject(value, "GitHub ruleset");
   const enforcement = requireString(ruleset.enforcement, "ruleset enforcement");
@@ -109,6 +146,17 @@ async function main(): Promise<void> {
 }
 
 async function requestJson(path: string, authorizationToken: string): Promise<unknown> {
+  const value = await requestOptionalJson(path, authorizationToken);
+  if (value === null) {
+    throw new Error(`GitHub request ${path} failed with 404 Not Found`);
+  }
+  return value;
+}
+
+async function requestOptionalJson(
+  path: string,
+  authorizationToken: string,
+): Promise<unknown> {
   const response = await fetch(`https://api.github.com${path}`, {
     headers: {
       Accept: "application/vnd.github+json",
@@ -116,6 +164,9 @@ async function requestJson(path: string, authorizationToken: string): Promise<un
       "X-GitHub-Api-Version": "2022-11-28",
     },
   });
+  if (response.status === 404) {
+    return null;
+  }
   if (!response.ok) {
     throw new Error(
       `GitHub request ${path} failed with ${response.status} ${response.statusText}`,

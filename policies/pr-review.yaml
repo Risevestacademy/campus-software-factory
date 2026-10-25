@@ -1,0 +1,38 @@
+version: 1
+
+checkName: Factory PR Review
+
+rubric:
+  version: 1
+  maxFindings: 3
+  minimumConfidence: 0.9
+
+canary:
+  minimumPullRequests: 10
+  maxDays: 14
+  maxFalsePositives: 1
+  maxTechnicalErrorRate: 0.05
+  maxP95LatencyMinutes: 10
+
+repositories:
+  - id: campus-web
+    mode: disabled
+    ciWorkflowName: CI
+    targetBranches: [dev, main]
+    provider:
+      id: claude
+      model: claude-opus-5-5
+  - id: campus-server
+    mode: disabled
+    ciWorkflowName: CI
+    targetBranches: [dev, main]
+    provider:
+      id: claude
+      model: claude-opus-5-5
+  - id: campus-mobile
+    mode: disabled
+    ciWorkflowName: Mobile quality
+    targetBranches: [dev, main]
+    provider:
+      id: claude
+      model: claude-opus-5-5

@@ -1,0 +1,20 @@
+{
+  "name": "defect-presence",
+  "purpose": "Renew a user's session token without interrupting their live presence: other users must keep seeing them online for the whole renewal.",
+  "base": {
+    "src/presence.ts": "const online = new Set<string>();\n\nexport const presence = {\n  add(userId: string): void {\n    online.add(userId);\n  },\n  remove(userId: string): void {\n    online.delete(userId);\n  },\n  isOnline(userId: string): boolean {\n    return online.has(userId);\n  },\n};\n",
+    "src/auth.ts": "export async function renewToken(userId: string): Promise<void> {\n  await fetch(`/api/sessions/${userId}/renew`, { method: \"POST\" });\n}\n",
+    "src/session.ts": "import { renewToken } from \"./auth\";\nimport { presence } from \"./presence\";\n\nexport async function renewSession(userId: string): Promise<void> {\n  await renewToken(userId);\n}\n"
+  },
+  "head": {
+    "src/session.ts": "import { renewToken } from \"./auth\";\nimport { presence } from \"./presence\";\n\nexport async function renewSession(userId: string): Promise<void> {\n  presence.remove(userId);\n  await renewToken(userId);\n  presence.add(userId);\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "path": "src/session.ts",
+    "lines": [
+      5,
+      7
+    ]
+  }
+}

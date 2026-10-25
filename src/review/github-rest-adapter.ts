@@ -1,8 +1,20 @@
+import { checkRunName, type CheckRunReport } from "./check-run.ts";
+import type { ChangedFile } from "./contracts.ts";
 import type {
+  FactoryCheckRun,
   GitHubReviewPort,
   PullRequest,
   WorkflowRun,
-} from "./index.ts";
+} from "./execution.ts";
+
+const checkRunsAppSlug = "github-actions";
+
+export interface SuccessfulPullRequestRun {
+  headSha: string;
+  headRepository: string;
+  pullRequestNumbers: number[];
+  completedAt: string;
+}
 
 interface GitHubRestAdapterOptions {
   apiUrl: string;
@@ -70,6 +82,7 @@ export class GitHubRestAdapter implements GitHubReviewPort {
       number: requireNumber(value.number, "pull request number"),
       state: requireString(value.state, "pull request state"),
       draft: requireBoolean(value.draft, "pull request draft state"),
+      baseRef: requireString(base.ref, "pull request base ref"),
       baseSha: requireString(base.sha, "pull request base SHA"),
       headSha: requireString(head.sha, "pull request head SHA"),
       headRepository: requireString(
@@ -80,48 +93,141 @@ export class GitHubRestAdapter implements GitHubReviewPort {
     };
   }
 
-  async hasInvocationClaim(
-    repository: string,
-    claimName: string,
-  ): Promise<boolean> {
-    const pages = await this.paginate(
-      `/repos/${repository}/actions/artifacts?name=${encodeURIComponent(claimName)}&per_page=100`,
-    );
-    return pages.some((page) => {
-      const artifacts = requireArray(
-        requireObject(page, "artifact page").artifacts,
-        "artifacts",
-      );
-      return artifacts.some((value) => {
-        const artifact = requireObject(value, "artifact");
-        return artifact.name === claimName && artifact.expired === false;
-      });
-    });
-  }
-
-  async listReviewBodies(
+  async listPullRequestFiles(
     repository: string,
     pullRequestNumber: number,
-  ): Promise<string[]> {
+  ): Promise<ChangedFile[]> {
     const pages = await this.paginate(
-      `/repos/${repository}/pulls/${pullRequestNumber}/reviews?per_page=100`,
+      `/repos/${repository}/pulls/${pullRequestNumber}/files?per_page=100`,
     );
     return pages.flatMap((page) =>
-      requireArray(page, "review page").flatMap((value) => {
-        const body = requireObject(value, "review").body;
-        return typeof body === "string" ? [body] : [];
+      requireArray(page, "pull request file page").map((value) => {
+        const file = requireObject(value, "pull request file");
+        return {
+          path: requireString(file.filename, "pull request file name"),
+          patch: typeof file.patch === "string" ? file.patch : null,
+        };
       }),
     );
   }
 
-  async publishCommentReview(
+  async listFactoryCheckRuns(
+    repository: string,
+    headSha: string,
+  ): Promise<FactoryCheckRun[]> {
+    const pages = await this.paginate(
+      `/repos/${repository}/commits/${headSha}/check-runs?check_name=${encodeURIComponent(checkRunName)}&filter=all&per_page=100`,
+    );
+    return pages.flatMap((page) =>
+      requireArray(requireObject(page, "check run page").check_runs, "check runs").flatMap(
+        (value) => {
+          const checkRun = requireObject(value, "check run");
+          const app = requireObject(checkRun.app, "check run app");
+          if (app.slug !== checkRunsAppSlug) {
+            return [];
+          }
+          return [
+            {
+              id: requireNumber(checkRun.id, "check run id"),
+              status: requireCheckStatus(checkRun.status),
+              externalId:
+                typeof checkRun.external_id === "string" ? checkRun.external_id : null,
+              completedAt:
+                typeof checkRun.completed_at === "string" ? checkRun.completed_at : null,
+            },
+          ];
+        },
+      ),
+    );
+  }
+
+  async listSuccessfulPullRequestRuns(
+    repository: string,
+    workflowName: string,
+    since: string,
+  ): Promise<SuccessfulPullRequestRun[]> {
+    const pages = await this.paginate(
+      `/repos/${repository}/actions/runs?event=pull_request&status=success&created=${encodeURIComponent(`>=${since}`)}&per_page=100`,
+    );
+    return pages.flatMap((page) =>
+      requireArray(requireObject(page, "workflow run page").workflow_runs, "workflow runs")
+        .map((value) => requireObject(value, "workflow run"))
+        .filter((run) => run.name === workflowName)
+        .map((run) => ({
+          headSha: requireString(run.head_sha, "workflow head SHA"),
+          headRepository: requireString(
+            requireObject(run.head_repository, "workflow head repository").full_name,
+            "workflow head repository name",
+          ),
+          pullRequestNumbers: requireArray(run.pull_requests, "workflow pull requests").map(
+            (entry) =>
+              requireNumber(
+                requireObject(entry, "workflow pull request").number,
+                "workflow pull request number",
+              ),
+          ),
+          completedAt: requireString(run.updated_at, "workflow completion time"),
+        })),
+    );
+  }
+
+  async listPullRequestLabels(
     repository: string,
     pullRequestNumber: number,
-    body: string,
+  ): Promise<string[]> {
+    const pages = await this.paginate(
+      `/repos/${repository}/issues/${pullRequestNumber}/labels?per_page=100`,
+    );
+    return pages.flatMap((page) =>
+      requireArray(page, "label page").map((value) =>
+        requireString(requireObject(value, "label").name, "label name"),
+      ),
+    );
+  }
+
+  async startCheckRun(
+    repository: string,
+    headSha: string,
+    externalId: string,
+  ): Promise<number> {
+    const created = requireObject(
+      await this.request(`/repos/${repository}/check-runs`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: checkRunName,
+          head_sha: headSha,
+          status: "in_progress",
+          external_id: externalId,
+          output: {
+            title: "Review in progress",
+            summary: "The factory reviewer is checking this head SHA.",
+          },
+        }),
+      }),
+      "created check run",
+    );
+    return requireNumber(created.id, "created check run id");
+  }
+
+  async publishCheckRun(
+    repository: string,
+    headSha: string,
+    report: CheckRunReport,
   ): Promise<void> {
-    await this.request(`/repos/${repository}/pulls/${pullRequestNumber}/reviews`, {
+    await this.request(`/repos/${repository}/check-runs`, {
       method: "POST",
-      body: JSON.stringify({ body, event: "COMMENT" }),
+      body: JSON.stringify({ name: report.name, head_sha: headSha, ...completedBody(report) }),
+    });
+  }
+
+  async completeCheckRun(
+    repository: string,
+    checkRunId: number,
+    report: CheckRunReport,
+  ): Promise<void> {
+    await this.request(`/repos/${repository}/check-runs/${checkRunId}`, {
+      method: "PATCH",
+      body: JSON.stringify(completedBody(report)),
     });
   }
 
@@ -157,6 +263,35 @@ export class GitHubRestAdapter implements GitHubReviewPort {
     }
     return response;
   }
+}
+
+function completedBody(report: CheckRunReport) {
+  return {
+    status: "completed",
+    conclusion: report.conclusion,
+    external_id: report.externalId,
+    output: {
+      title: report.title,
+      summary: report.summary,
+      annotations: report.annotations.map((annotation) => ({
+        path: annotation.path,
+        start_line: annotation.startLine,
+        end_line: annotation.endLine,
+        annotation_level: annotation.annotationLevel,
+        title: annotation.title,
+        message: annotation.message,
+      })),
+    },
+  };
+}
+
+// GitHub also reports waiting, requested, and pending; only completion matters here.
+function requireCheckStatus(value: unknown): FactoryCheckRun["status"] {
+  const status = requireString(value, "check run status");
+  if (status === "completed" || status === "queued") {
+    return status;
+  }
+  return "in_progress";
 }
 
 function nextLink(header: string | null): string | null {
