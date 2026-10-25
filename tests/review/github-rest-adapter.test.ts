@@ -171,6 +171,8 @@ describe("GitHubRestAdapter", () => {
 
   test("lists successful pull request CI runs for one workflow since the canary start", async () => {
     const run = (name: string, sha: string) => ({
+      id: 7,
+      run_attempt: 1,
       name,
       head_sha: sha,
       updated_at: "2026-10-25T10:00:00Z",
@@ -209,6 +211,46 @@ describe("GitHubRestAdapter", () => {
     ]);
     expect(String(fetcher.mock.calls[0]?.[0])).toBe(
       "https://api.github.com/repos/rise/campus-web/actions/runs?event=pull_request&status=success&created=%3E%3D2026-10-25T09%3A00%3A00Z&per_page=100",
+    );
+  });
+
+  test("times a rerun from its first successful attempt, not its latest update", async () => {
+    const rerun = (id: number, updatedAt: string) => ({
+      id,
+      run_attempt: 2,
+      name: "CI",
+      head_sha: `sha-${id}`,
+      updated_at: updatedAt,
+      head_repository: { full_name: "rise/campus-web" },
+      pull_requests: [{ number: 21 }],
+    });
+    const responses: Record<string, unknown> = {
+      "/actions/runs?": {
+        workflow_runs: [rerun(1, "2026-10-25T12:00:00Z"), rerun(2, "2026-10-25T13:00:00Z")],
+      },
+      "/actions/runs/1/attempts/1": { conclusion: "failure", updated_at: "2026-10-25T10:00:00Z" },
+      "/actions/runs/2/attempts/1": { conclusion: "success", updated_at: "2026-10-25T11:00:00Z" },
+    };
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+      const key = Object.keys(responses).find((path) => String(url).includes(path));
+      return jsonResponse(responses[key ?? ""] ?? {});
+    });
+
+    const runs = await adapter(fetcher).listSuccessfulPullRequestRuns(
+      "rise/campus-web",
+      "CI",
+      "2026-10-25T09:00:00Z",
+    );
+
+    expect(runs.map((entry) => [entry.headSha, entry.completedAt])).toEqual([
+      ["sha-1", "2026-10-25T12:00:00Z"],
+      ["sha-2", "2026-10-25T11:00:00Z"],
+    ]);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(
+      expect.arrayContaining([
+        "https://api.github.com/repos/rise/campus-web/actions/runs/1/attempts/1",
+        "https://api.github.com/repos/rise/campus-web/actions/runs/2/attempts/1",
+      ]),
     );
   });
 

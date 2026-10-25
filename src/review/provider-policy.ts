@@ -13,13 +13,19 @@ export interface ReviewCredential {
   rotateBy?: string;
 }
 
+export interface ReviewProvider {
+  id: ProviderId;
+  model: string;
+}
+
 export interface RepositoryReviewPolicy {
   id: string;
   mode: ReviewMode;
   ciWorkflowName: string;
   targetBranches: ("dev" | "main")[];
-  provider: { id: ProviderId; model: string };
+  provider: ReviewProvider;
   canaryStartsAt?: string;
+  canaryProvider?: ReviewProvider;
   credential?: ReviewCredential;
 }
 
@@ -39,9 +45,10 @@ export interface PrReviewPolicy {
   repositories: RepositoryReviewPolicy[];
 }
 
-const credentialSecretPatterns: Readonly<Record<ProviderId, RegExp>> = {
-  claude: /^CLAUDE_CODE_OAUTH_TOKEN(_[A-Z0-9]+)*$/,
-  codex: /^OPENAI_API_KEY(_[A-Z0-9]+)*$/,
+// The caller template passes these exact secrets, so policy may name no other.
+export const providerCredentialSecrets: Readonly<Record<ProviderId, string>> = {
+  claude: "CLAUDE_CODE_OAUTH_TOKEN",
+  codex: "OPENAI_API_KEY",
 };
 
 const validatePrReviewPolicy = createJsonParser<PrReviewPolicy>(
@@ -69,6 +76,7 @@ export function parsePrReviewPolicy(
     }
     seenIds.add(repository.id);
     validateCanaryStart(repository);
+    validateCanaryProvider(repository);
     validateCredentialSecret(repository);
     validateCredentialDates(repository, now);
   }
@@ -93,14 +101,29 @@ function validateCanaryStart(repository: RepositoryReviewPolicy): void {
   }
 }
 
-function validateCredentialSecret(repository: RepositoryReviewPolicy): void {
-  const secret = repository.credential?.secret;
+// Canary evidence qualifies one provider and model; any change must restart it.
+function validateCanaryProvider(repository: RepositoryReviewPolicy): void {
+  const { provider, canaryProvider } = repository;
   if (
-    secret !== undefined &&
-    !credentialSecretPatterns[repository.provider.id].test(secret)
+    canaryProvider !== undefined &&
+    (canaryProvider.id !== provider.id || canaryProvider.model !== provider.model)
   ) {
     throw new Error(
-      `Repository "${repository.id}" credential secret ${secret} does not match provider ${repository.provider.id}`,
+      `Repository "${repository.id}" provider ${describeProvider(provider)} differs from its canary ${describeProvider(canaryProvider)}; start a new canary`,
+    );
+  }
+}
+
+function describeProvider(provider: ReviewProvider): string {
+  return `${provider.id}/${provider.model}`;
+}
+
+function validateCredentialSecret(repository: RepositoryReviewPolicy): void {
+  const secret = repository.credential?.secret;
+  const expected = providerCredentialSecrets[repository.provider.id];
+  if (secret !== undefined && secret !== expected) {
+    throw new Error(
+      `Repository "${repository.id}" credential secret ${secret} must be ${expected} for provider ${repository.provider.id}`,
     );
   }
 }

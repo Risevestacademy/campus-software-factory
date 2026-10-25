@@ -299,6 +299,7 @@ describe("FactoryReviewExecution.publish", () => {
         modelOutputJson: JSON.stringify({ status: "missing_spec", findings: [] }),
       }),
     ).resolves.toEqual({ outcome: "missing-purpose", conclusion: "failure" });
+    expect(github.completed[0]?.report.summary).toContain("too vague to review against");
   });
 });
 

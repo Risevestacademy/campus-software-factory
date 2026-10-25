@@ -10,6 +10,8 @@ import {
   validateFindingLocations,
   type ReviewResult,
 } from "../../src/review/index.ts";
+import { loadFactoryReviewPolicies } from "../../src/review/policy-loader.ts";
+import { judge } from "./judge.ts";
 import {
   buildWorkspace,
   loadReviewCases,
@@ -18,7 +20,6 @@ import {
 } from "./workspace.ts";
 
 const run = promisify(execFile);
-const model = "claude-opus-5-5";
 const passThreshold = 0.75;
 const caseTimeoutMilliseconds = 10 * 60 * 1_000;
 
@@ -30,27 +31,54 @@ interface CaseScore {
 }
 
 const schema = await readFile(reviewOutputSchemaPath(), "utf8");
-const scores: CaseScore[] = [];
-for (const reviewCase of loadReviewCases()) {
-  scores.push(await scoreCase(reviewCase));
+const models = await pinnedClaudeModels();
+const cases = loadReviewCases();
+const modelReports = [];
+for (const model of models) {
+  modelReports.push(await scoreModel(model));
 }
-
-const passedCount = scores.filter((score) => score.passed).length;
-const cleanCasesSilent = scores
-  .filter((score) => score.expected.status === "clean")
-  .every((score) => score.passed);
-const score = passedCount / scores.length;
-const passed = score >= passThreshold && cleanCasesSilent;
-process.stdout.write(
-  `${JSON.stringify({ model, score, passThreshold, cleanCasesSilent, passed, cases: scores }, null, 2)}\n`,
-);
+const passed = modelReports.every((report) => report.passed);
+process.stdout.write(`${JSON.stringify({ passed, models: modelReports }, null, 2)}\n`);
 process.exitCode = passed ? 0 : 1;
 
-async function scoreCase(reviewCase: ReviewCase): Promise<CaseScore> {
+async function pinnedClaudeModels(): Promise<string[]> {
+  const { policy } = await loadFactoryReviewPolicies(new Date());
+  const pinned = new Set(
+    policy.repositories
+      .filter((repository) => repository.provider.id === "claude")
+      .map((repository) => repository.provider.model),
+  );
+  if (pinned.size === 0) {
+    throw new Error("No repository in policies/pr-review.yaml pins a Claude model");
+  }
+  return [...pinned];
+}
+
+async function scoreModel(model: string) {
+  const scores: CaseScore[] = [];
+  for (const reviewCase of cases) {
+    scores.push(await scoreCase(reviewCase, model));
+  }
+  const passedCount = scores.filter((score) => score.passed).length;
+  const cleanCasesSilent = scores
+    .filter((score) => score.expected.status === "clean")
+    .every((score) => score.passed);
+  const score = passedCount / scores.length;
+  return {
+    model,
+    score,
+    passThreshold,
+    cleanCasesSilent,
+    passed: score >= passThreshold && cleanCasesSilent,
+    cases: scores,
+  };
+}
+
+async function scoreCase(reviewCase: ReviewCase, model: string): Promise<CaseScore> {
   const workspace = await buildWorkspace(reviewCase);
   try {
-    const result = await review(reviewCase, workspace);
-    return { name: reviewCase.name, expected: reviewCase.expect, ...judge(reviewCase, result) };
+    const result = await review(reviewCase, workspace, model);
+    return { name: reviewCase.name, expected: reviewCase.expect, ...judge(reviewCase.expect, result) };
   } catch (error: unknown) {
     return {
       name: reviewCase.name,
@@ -66,6 +94,7 @@ async function scoreCase(reviewCase: ReviewCase): Promise<CaseScore> {
 async function review(
   reviewCase: ReviewCase,
   workspace: ReviewWorkspace,
+  model: string,
 ): Promise<ReviewResult> {
   const prompt = renderReviewPrompt({
     repository: "factory-eval/review",
@@ -116,31 +145,4 @@ async function review(
     validateFindingLocations(result.findings, workspace.changedFiles);
   }
   return result;
-}
-
-function judge(
-  reviewCase: ReviewCase,
-  result: ReviewResult,
-): Pick<CaseScore, "passed" | "detail"> {
-  const expected = reviewCase.expect;
-  if (expected.status === "clean") {
-    return result.status === "clean"
-      ? { passed: true, detail: "silent as expected" }
-      : { passed: false, detail: `expected clean, got ${result.status}: ${summarize(result)}` };
-  }
-  const hit = result.findings.some(
-    (finding) =>
-      finding.path === expected.path &&
-      finding.line >= expected.lines[0] &&
-      finding.line <= expected.lines[1],
-  );
-  return hit
-    ? { passed: true, detail: `found defect at ${expected.path}:${expected.lines.join("-")}` }
-    : { passed: false, detail: `missed ${expected.path}:${expected.lines.join("-")}; got ${summarize(result)}` };
-}
-
-function summarize(result: ReviewResult): string {
-  return result.findings.length === 0
-    ? result.status
-    : result.findings.map((finding) => `${finding.path}:${finding.line} ${finding.title}`).join("; ");
 }

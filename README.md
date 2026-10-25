@@ -86,26 +86,55 @@ that repository in `policies/pr-review.yaml`: Claude or Codex, never a
 fallback. Output is validated deterministically; a finding can block only if
 it points at a line the pull request changed.
 
+Claude is the initial provider for every repository. Codex calls the hosted
+OpenAI API, which the factory allows as an exception AJ approved on
+2026-10-25; no repository pins it yet.
+
+### When the reviewer is unavailable
+
+A provider outage or exhausted usage limit fails the check as technical, so
+the pull request stays blocked and a same-SHA re-run is allowed. Re-run the
+review once the limit resets. An urgent merge uses the owner-team bypass.
+Switching provider is a factory policy commit plus a pinned-SHA bump in the
+caller, and it starts a new advisory canary, so it is not an outage fix.
+
 ### Credentials
 
-Provider credentials are organization Actions secrets scoped to the three
-product repositories. Personal credentials need `owner`, `expiresOn`, and
-`rotateBy` in policy. An expired credential fails `pnpm policy:validate` and
-stops new reviews, which keeps the required check pending.
+Provider credentials are the organization Actions secrets
+`CLAUDE_CODE_OAUTH_TOKEN` and `OPENAI_API_KEY`, scoped to the three product
+repositories. The caller template passes exactly these names, so
+`pnpm policy:validate` rejects any other `credential.secret`. Personal
+credentials need `owner`, `expiresOn`, and `rotateBy` in policy. An expired
+credential fails `pnpm policy:validate` and stops new reviews, which keeps the
+required check pending.
 
 ### Rollout per repository
 
-1. Copy the caller template to the product's default branch, pin the factory
+1. Create the owner team from `policies/repo-registry.yaml`, point CODEOWNERS
+   at it, and create the `factory-review:valid` and
+   `factory-review:false-positive` labels.
+2. Scope the provider's organization secret to the repository.
+3. Copy the caller template to the product's default branch, pin the factory
    SHA, and set its CI workflow name.
-2. Set `mode: advisory` with `canaryStartsAt` and credential metadata.
-3. Label every finding-bearing pull request `factory-review:valid` or
+4. Set `mode: advisory` with `canaryStartsAt`, `canaryProvider` equal to
+   `provider`, and credential metadata.
+5. Label every finding-bearing pull request `factory-review:valid` or
    `factory-review:false-positive` for 10 pull requests or 14 days.
-4. Run `pnpm review:evaluate`. It must pass.
-5. Product CODEOWNERS approve `mode: enforced`, and the `factory-quality`
-   ruleset requires `Factory PR Review` on `dev` and `main`.
+6. Run `pnpm review:evaluate`. It must pass.
+7. Product CODEOWNERS approve `mode: enforced`, and the `factory-quality`
+   ruleset requires `Factory PR Review` on `dev`, then on `main`.
 
 A provider, model, rubric, or major action change returns that repository to
-advisory and starts a new canary.
+advisory and starts a new canary. `pnpm policy:validate` enforces the provider
+and model half: it rejects a `provider` that differs from `canaryProvider`.
+
+### Known residuals
+
+- A draft pull request from a fork gets the neutral "human review only"
+  check, because GitHub sends no draft state on fork CI runs.
+- The provider step runs in the job that holds `checks: write`. Claude's
+  subprocess environment is scrubbed of secrets; splitting start, review, and
+  publish into separate jobs would remove the token and is deferred.
 
 ### Bypass
 

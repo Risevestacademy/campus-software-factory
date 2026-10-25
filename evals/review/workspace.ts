@@ -4,11 +4,16 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import type { ChangedFile } from "../../src/review/index.ts";
+import type { ChangedFile, ReviewFinding } from "../../src/review/index.ts";
 
 export type ExpectedReview =
   | { status: "clean" }
-  | { status: "findings"; path: string; lines: [number, number] };
+  | {
+      status: "findings";
+      path: string;
+      lines: [number, number];
+      severity: ReviewFinding["severity"];
+    };
 
 export interface ReviewCase {
   name: string;
@@ -115,10 +120,15 @@ function parseCase(value: unknown, file: string): ReviewCase {
     ) {
       throw new Error(`${file} expect.lines must be [start, end]`);
     }
+    const severity = expectation.severity;
+    if (severity !== "P0" && severity !== "P1" && severity !== "P2") {
+      throw new Error(`${file} expect.severity must be "P0", "P1", or "P2"`);
+    }
     expected = {
       status,
       path: requireString(expectation.path, `${file} expect.path`),
       lines: [lines[0] as number, lines[1] as number],
+      severity,
     };
   } else {
     throw new Error(`${file} expect.status must be "clean" or "findings"`);

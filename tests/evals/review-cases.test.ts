@@ -13,6 +13,14 @@ describe("review eval cases", () => {
     expect(cases.filter((entry) => entry.expect.status === "findings").length).toBeGreaterThanOrEqual(2);
   });
 
+  test("give every seeded defect the severity it must be reported at", () => {
+    for (const entry of cases) {
+      if (entry.expect.status === "findings") {
+        expect(["P0", "P1", "P2"], entry.name).toContain(entry.expect.severity);
+      }
+    }
+  });
+
   test.each(cases.map((entry) => [entry.name, entry] as const))(
     "%s changes code and anchors any expected finding inside its own diff",
     async (_name, reviewCase) => {

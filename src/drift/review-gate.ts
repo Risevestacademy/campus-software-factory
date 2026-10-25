@@ -1,3 +1,4 @@
+import { checkRunName } from "../review/check-run.js";
 import type { ReviewMode } from "../review/provider-policy.js";
 import type {
   DriftFinding,
@@ -16,7 +17,6 @@ export interface ReviewGateInput {
 }
 
 const qualityRulesetName = "factory-quality";
-const reviewCheckContext = "Factory PR Review";
 const protectedRefs = ["refs/heads/dev", "refs/heads/main"];
 const teamOwner = /^@[^/\s]+\/[^/\s]+$/;
 
@@ -65,15 +65,15 @@ export function auditReviewGate(input: ReviewGateInput): DriftFinding[] {
     });
   }
 
-  const requiresReview = requiredContexts(quality).includes(reviewCheckContext);
+  const requiresReview = requiredContexts(quality).includes(checkRunName);
   if (requiresReview !== (input.mode === "enforced")) {
     findings.push({
       kind: "changed",
       path: `${rulesetPath}/required_status_checks`,
       expected:
         input.mode === "enforced"
-          ? `requires ${reviewCheckContext}`
-          : `does not yet require ${reviewCheckContext}`,
+          ? `requires ${checkRunName}`
+          : `does not yet require ${checkRunName}`,
       actual: requiredContexts(quality),
     });
   }

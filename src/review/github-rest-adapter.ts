@@ -149,26 +149,48 @@ export class GitHubRestAdapter implements GitHubReviewPort {
     const pages = await this.paginate(
       `/repos/${repository}/actions/runs?event=pull_request&status=success&created=${encodeURIComponent(`>=${since}`)}&per_page=100`,
     );
-    return pages.flatMap((page) =>
+    const runs = pages.flatMap((page) =>
       requireArray(requireObject(page, "workflow run page").workflow_runs, "workflow runs")
         .map((value) => requireObject(value, "workflow run"))
-        .filter((run) => run.name === workflowName)
-        .map((run) => ({
-          headSha: requireString(run.head_sha, "workflow head SHA"),
-          headRepository: requireString(
-            requireObject(run.head_repository, "workflow head repository").full_name,
-            "workflow head repository name",
-          ),
-          pullRequestNumbers: requireArray(run.pull_requests, "workflow pull requests").map(
-            (entry) =>
-              requireNumber(
-                requireObject(entry, "workflow pull request").number,
-                "workflow pull request number",
-              ),
-          ),
-          completedAt: requireString(run.updated_at, "workflow completion time"),
-        })),
+        .filter((run) => run.name === workflowName),
     );
+    return Promise.all(
+      runs.map(async (run) => ({
+        headSha: requireString(run.head_sha, "workflow head SHA"),
+        headRepository: requireString(
+          requireObject(run.head_repository, "workflow head repository").full_name,
+          "workflow head repository name",
+        ),
+        pullRequestNumbers: requireArray(run.pull_requests, "workflow pull requests").map(
+          (entry) =>
+            requireNumber(
+              requireObject(entry, "workflow pull request").number,
+              "workflow pull request number",
+            ),
+        ),
+        completedAt: await this.firstSuccessfulAttemptCompletedAt(repository, run),
+      })),
+    );
+  }
+
+  // A listed run shows its latest attempt, and a rerun moves its updated_at.
+  // The review was triggered by the first attempt that succeeded.
+  private async firstSuccessfulAttemptCompletedAt(
+    repository: string,
+    run: Record<string, unknown>,
+  ): Promise<string> {
+    const latestAttempt = requireNumber(run.run_attempt, "workflow run attempt");
+    const runId = requireNumber(run.id, "workflow run ID");
+    for (let attempt = 1; attempt < latestAttempt; attempt += 1) {
+      const earlier = requireObject(
+        await this.request(`/repos/${repository}/actions/runs/${runId}/attempts/${attempt}`),
+        "workflow run attempt",
+      );
+      if (earlier.conclusion === "success") {
+        return requireString(earlier.updated_at, "workflow attempt completion time");
+      }
+    }
+    return requireString(run.updated_at, "workflow completion time");
   }
 
   async listPullRequestLabels(

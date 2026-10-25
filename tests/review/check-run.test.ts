@@ -75,7 +75,7 @@ describe("buildCheckRunReport", () => {
 
   test("fails a missing purpose and tells the author how to fix it", () => {
     const report = buildCheckRunReport(
-      { kind: "missing-purpose" },
+      { kind: "missing-purpose", reason: "absent" },
       { ...context, purpose: null },
     );
 
@@ -83,7 +83,21 @@ describe("buildCheckRunReport", () => {
       conclusion: "failure",
       externalId: "factory-review:v1:missing-purpose:123",
     });
-    expect(report.summary).toContain("## Change and measurable outcome");
+    expect(report.summary).toContain("Add a non-empty `## Change and measurable outcome`");
+  });
+
+  test("asks for a sharper purpose when the reviewer found it too vague", () => {
+    const report = buildCheckRunReport(
+      { kind: "missing-purpose", reason: "too-vague" },
+      context,
+    );
+
+    expect(report).toMatchObject({
+      conclusion: "failure",
+      externalId: "factory-review:v1:missing-purpose:123",
+    });
+    expect(report.summary).toContain("too vague to review against");
+    expect(report.summary).not.toContain("Add a non-empty");
   });
 
   test("fails a technical error and allows a same-SHA rerun", () => {

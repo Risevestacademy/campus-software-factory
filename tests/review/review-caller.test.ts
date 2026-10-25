@@ -3,11 +3,16 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import { parse } from "yaml";
 
+import { providerCredentialSecrets } from "../../src/review/index.js";
+
 interface Workflow {
   on: Record<string, { workflows?: string[]; types?: string[] }>;
   permissions: Record<string, string>;
   concurrency: { group: string; "cancel-in-progress": boolean };
-  jobs: Record<string, { if?: string; steps: Array<{ uses?: string; run?: string }> }>;
+  jobs: Record<
+    string,
+    { if?: string; steps: Array<{ uses?: string; run?: string; with?: Record<string, string> }> }
+  >;
 }
 
 async function loadTemplate(name: string): Promise<Workflow> {
@@ -53,6 +58,15 @@ describe("factory review caller template", () => {
       "Risevestacademy/campus-software-factory/.github/actions/factory-pr-review@PINNED_40_CHARACTER_COMMIT_SHA",
     );
     expect(review?.steps[0]?.run).toBeUndefined();
+  });
+
+  test("passes exactly the provider secrets the review policy accepts", () => {
+    const inputs = review?.steps[0]?.with ?? {};
+
+    expect(inputs["claude-code-oauth-token"]).toBe(
+      `\${{ secrets.${providerCredentialSecrets.claude} }}`,
+    );
+    expect(inputs["openai-api-key"]).toBe(`\${{ secrets.${providerCredentialSecrets.codex} }}`);
   });
 
   test("keeps ready_for_review on product CI so drafts get reviewed when marked ready", async () => {

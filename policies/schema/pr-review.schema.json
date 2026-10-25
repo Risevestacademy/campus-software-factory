@@ -128,27 +128,13 @@
           }
         },
         "provider": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "id",
-            "model"
-          ],
-          "properties": {
-            "id": {
-              "enum": [
-                "claude",
-                "codex"
-              ]
-            },
-            "model": {
-              "type": "string",
-              "pattern": "^(?!.*latest)[a-z0-9][a-z0-9.-]*$"
-            }
-          }
+          "$ref": "#/$defs/provider"
         },
         "canaryStartsAt": {
           "$ref": "#/$defs/isoTimestamp"
+        },
+        "canaryProvider": {
+          "$ref": "#/$defs/provider"
         },
         "credential": {
           "$ref": "#/$defs/credential"
@@ -174,15 +160,37 @@
             "type": "object",
             "properties": {
               "canaryStartsAt": true,
+              "canaryProvider": true,
               "credential": true
             },
             "required": [
               "canaryStartsAt",
+              "canaryProvider",
               "credential"
             ]
           }
         }
       ]
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "model"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "claude",
+            "codex"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^(?!.*latest)[a-z0-9][a-z0-9.-]*$"
+        }
+      }
     },
     "credential": {
       "type": "object",

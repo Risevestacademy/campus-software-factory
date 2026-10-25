@@ -25,6 +25,7 @@ const personalCredential = `    credential:
 const advisoryClaude = `    mode: advisory
     canaryStartsAt: "2026-10-25T09:00:00Z"
     provider: { id: claude, model: claude-opus-5-5 }
+    canaryProvider: { id: claude, model: claude-opus-5-5 }
 `;
 
 const disabledClaude = `    mode: disabled
@@ -114,7 +115,7 @@ describe("parsePrReviewPolicy", () => {
 
   test("rejects a Codex provider wired to a Claude secret", () => {
     const source = webRepository(
-      advisoryClaude.replace(
+      advisoryClaude.replaceAll(
         "id: claude, model: claude-opus-5-5",
         "id: codex, model: gpt-5.5-codex",
       ) + personalCredential,
@@ -123,6 +124,55 @@ describe("parsePrReviewPolicy", () => {
     expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
       /secret/,
     );
+  });
+
+  test("rejects a secret name the caller template never passes", () => {
+    const source = webRepository(
+      advisoryClaude +
+        personalCredential.replace(
+          "secret: CLAUDE_CODE_OAUTH_TOKEN",
+          "secret: CLAUDE_CODE_OAUTH_TOKEN_WEB",
+        ),
+    );
+
+    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
+      'Repository "campus-web" credential secret CLAUDE_CODE_OAUTH_TOKEN_WEB must be CLAUDE_CODE_OAUTH_TOKEN for provider claude',
+    );
+  });
+
+  test("requires the canary provider before a repository runs reviews", () => {
+    const source = webRepository(
+      advisoryClaude.replace("    canaryProvider: { id: claude, model: claude-opus-5-5 }\n", "") +
+        personalCredential,
+    );
+
+    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(/canaryProvider/);
+  });
+
+  test("rejects a provider or model change that keeps the old canary", () => {
+    const source = webRepository(
+      advisoryClaude.replace(
+        "provider: { id: claude, model: claude-opus-5-5 }\n",
+        "provider: { id: claude, model: claude-opus-5-6 }\n",
+      ) + personalCredential,
+    );
+
+    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
+      'Repository "campus-web" provider claude/claude-opus-5-6 differs from its canary claude/claude-opus-5-5; start a new canary',
+    );
+  });
+
+  test("accepts a repository whose provider matches its canary", () => {
+    const policy = parsePrReviewPolicy(
+      webRepository(advisoryClaude + personalCredential),
+      registryIds,
+      now,
+    );
+
+    expect(policy.repositories[0]?.canaryProvider).toEqual({
+      id: "claude",
+      model: "claude-opus-5-5",
+    });
   });
 
   test("rejects repositories missing from the registry", () => {

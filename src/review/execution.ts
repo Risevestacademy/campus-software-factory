@@ -138,7 +138,7 @@ export function createFactoryReviewExecution(
   ): Promise<ReviewOutcome> {
     const result = parseReviewResult(modelOutputJson);
     if (result.status === "missing_spec") {
-      return { kind: "missing-purpose" };
+      return { kind: "missing-purpose", reason: "too-vague" };
     }
     if (result.status === "clean") {
       return { kind: "clean" };
@@ -242,7 +242,10 @@ export function createFactoryReviewExecution(
         await github.publishCheckRun(
           run.repository,
           pullRequest.headSha,
-          buildCheckRunReport({ kind: "missing-purpose" }, context(run.workflowRunId, null)),
+          buildCheckRunReport(
+            { kind: "missing-purpose", reason: "absent" },
+            context(run.workflowRunId, null),
+          ),
         );
         return skip("missing-purpose");
       }

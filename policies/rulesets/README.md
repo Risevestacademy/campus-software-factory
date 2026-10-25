@@ -21,7 +21,9 @@ each product's CODEOWNERS must include its owner team from
 `policies/repo-registry.yaml`, and every owner must be a team. Specialist teams
 may be listed alongside the owner team.
 That same team is the only `factory-quality` bypass actor, in `pull_request`
-mode, so every bypass is a recorded ruleset event on a pull request.
+mode, so every bypass is a recorded ruleset event on a pull request. There is
+deliberately no break-glass team: an incident merge goes through the owner
+team's bypass, so drift flags any other bypass actor.
 
 `pnpm drift:review-gate` checks every repository whose review mode is not
 `disabled`:

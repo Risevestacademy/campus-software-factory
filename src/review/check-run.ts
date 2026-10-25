@@ -6,7 +6,7 @@ export const checkRunName = "Factory PR Review";
 export type ReviewOutcome =
   | { kind: "clean" }
   | { kind: "findings"; findings: ReviewFinding[] }
-  | { kind: "missing-purpose" }
+  | { kind: "missing-purpose"; reason: "absent" | "too-vague" }
   | { kind: "technical"; reason: string }
   | { kind: "fork" };
 
@@ -74,11 +74,20 @@ export function buildCheckRunReport(
         outcome.findings.map(toAnnotation),
       );
     case "missing-purpose":
-      return report(
-        "failure",
-        "PR purpose missing",
-        "Add a non-empty `## Change and measurable outcome` section to the PR description, then re-run this workflow.",
-      );
+      return outcome.reason === "absent"
+        ? report(
+            "failure",
+            "PR purpose missing",
+            "Add a non-empty `## Change and measurable outcome` section to the PR description, then re-run this workflow.",
+          )
+        : report(
+            "failure",
+            "PR purpose too vague",
+            withPurpose(
+              context,
+              "The reviewer judged `## Change and measurable outcome` too vague to review against. Name the behavior or metric that changes, then re-run this workflow.",
+            ),
+          );
     case "technical":
       return report(
         "failure",
