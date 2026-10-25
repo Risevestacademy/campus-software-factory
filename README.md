@@ -100,9 +100,9 @@ caller, and it starts a new advisory canary, so it is not an outage fix.
 
 ### Credentials
 
-Provider credentials are the organization Actions secrets
-`CLAUDE_CODE_OAUTH_TOKEN` and `OPENAI_API_KEY`, scoped to the three product
-repositories. The caller template passes exactly these names, so
+Provider credentials are the Actions secrets `CLAUDE_CODE_OAUTH_TOKEN` and
+`OPENAI_API_KEY`, set on each product repository or as organization secrets
+scoped to it. The caller template passes exactly these names, so
 `pnpm policy:validate` rejects any other `credential.secret`. Personal
 credentials need `owner`, `expiresOn`, and `rotateBy` in policy. An expired
 credential fails `pnpm policy:validate` and stops new reviews, which keeps the
@@ -113,11 +113,13 @@ required check pending.
 1. Create the owner team from `policies/repo-registry.yaml`, point CODEOWNERS
    at it, and create the `factory-review:valid` and
    `factory-review:false-positive` labels.
-2. Scope the provider's organization secret to the repository.
-3. Copy the caller template to the product's default branch, pin the factory
-   SHA, and set its CI workflow name.
-4. Set `mode: advisory` with `canaryStartsAt`, `canaryProvider` equal to
-   `provider`, and credential metadata.
+2. Make the provider's secret available to the repository. Product repos are
+   public, so this factory repo must be public for them to call its action.
+3. Set `mode: advisory` with `canaryStartsAt`, `canaryProvider` equal to
+   `provider`, and credential metadata. Merge it to factory `main`.
+4. Copy the caller template to the product's default branch, pin it to the
+   factory commit from step 3, and set its CI workflow name. A pin to a commit
+   where the repository is `disabled` skips every review.
 5. Label every finding-bearing pull request `factory-review:valid` or
    `factory-review:false-positive` for 10 pull requests or 14 days.
 6. Run `pnpm review:evaluate`. It must pass.

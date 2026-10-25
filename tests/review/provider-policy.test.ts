@@ -40,7 +40,7 @@ ${fields}`;
 }
 
 describe("parsePrReviewPolicy", () => {
-  test("accepts the shipped policy with every repository disabled", async () => {
+  test("accepts the shipped policy with only campus-web in advisory", async () => {
     const source = await readFile(
       new URL("../../policies/pr-review.yaml", import.meta.url),
       "utf8",
@@ -49,7 +49,7 @@ describe("parsePrReviewPolicy", () => {
     const policy = parsePrReviewPolicy(source, registryIds, now);
 
     expect(policy.repositories.map((entry) => [entry.id, entry.mode])).toEqual([
-      ["campus-web", "disabled"],
+      ["campus-web", "advisory"],
       ["campus-server", "disabled"],
       ["campus-mobile", "disabled"],
     ]);
