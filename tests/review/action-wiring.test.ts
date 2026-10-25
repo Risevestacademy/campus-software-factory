@@ -5,6 +5,7 @@ import { parse } from "yaml";
 
 interface ActionStep {
   id?: string;
+  "continue-on-error"?: boolean;
   name?: string;
   if?: string;
   run?: string;
@@ -43,6 +44,7 @@ describe("Factory PR Review composite action wiring", () => {
       "preflight",
       "checkout_pr",
       "checkout_trusted",
+      "bubblewrap",
       "claude_1",
       "codex_1",
       "keep_1",
@@ -77,6 +79,12 @@ describe("Factory PR Review composite action wiring", () => {
       expect(step(id).env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe("1");
       expect(step(id).with?.github_token).toBe("${{ inputs.github-token }}");
     }
+  });
+
+  test("installs bubblewrap exactly when Claude would run, and stops the review if it cannot", () => {
+    expect(step("bubblewrap").if).toBe(step("claude_1").if);
+    expect(step("bubblewrap").run).toBe('bash "$GITHUB_ACTION_PATH/install-bubblewrap.sh"');
+    expect(step("bubblewrap")["continue-on-error"]).toBeUndefined();
   });
 
   test("gates each provider step on the policy-selected provider", () => {

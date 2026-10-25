@@ -89,7 +89,11 @@ factory commit, checks out the head as untrusted evidence in `pr/` and the
 target branch's guidance in `trusted/`, and runs the one provider pinned for
 that repository in `policies/pr-review.yaml`: Claude or Codex, never a
 fallback. Output is validated deterministically; a finding can block only if
-it points at a line the pull request changed.
+it points at a line the pull request changed. Claude runs with subprocess
+environment scrubbing, which needs bubblewrap, so when Claude is the provider
+the action installs it. If the runner image still blocks bwrap's user
+namespaces, the action relaxes `kernel.apparmor_restrict_unprivileged_userns`
+on that disposable runner and logs a warning.
 
 Claude is the initial provider for every repository. Codex calls the hosted
 OpenAI API, which the factory allows as an exception AJ approved on
