@@ -21,6 +21,8 @@ import {
 
 const run = promisify(execFile);
 const passThreshold = 0.75;
+// The old rubric posted at most 3 findings; a case with more proves none are dropped.
+const formerFindingsCap = 3;
 const caseTimeoutMilliseconds = 10 * 60 * 1_000;
 
 interface CaseScore {
@@ -63,13 +65,21 @@ async function scoreModel(model: string) {
   const cleanCasesSilent = scores
     .filter((score) => score.expected.status === "clean")
     .every((score) => score.passed);
+  const uncappedCasesComplete = scores
+    .filter(
+      (score) =>
+        score.expected.status === "findings" &&
+        score.expected.defects.length > formerFindingsCap,
+    )
+    .every((score) => score.passed);
   const score = passedCount / scores.length;
   return {
     model,
     score,
     passThreshold,
     cleanCasesSilent,
-    passed: score >= passThreshold && cleanCasesSilent,
+    uncappedCasesComplete,
+    passed: score >= passThreshold && cleanCasesSilent && uncappedCasesComplete,
     cases: scores,
   };
 }

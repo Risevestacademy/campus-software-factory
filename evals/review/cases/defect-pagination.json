@@ -9,11 +9,15 @@
   },
   "expect": {
     "status": "findings",
-    "path": "src/users.ts",
-    "lines": [
-      8,
-      9
-    ],
-    "severity": "P1"
+    "defects": [
+      {
+        "path": "src/users.ts",
+        "lines": [
+          8,
+          9
+        ],
+        "severity": "P1"
+      }
+    ]
   }
 }

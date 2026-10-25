@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 
 import {
   buildCheckRunReport,
+  checkRunSummaryLimit,
+  findingsCeiling,
   isDecisiveOutcome,
   parseExternalId,
   type CheckRunContext,
@@ -65,12 +67,85 @@ describe("buildCheckRunReport", () => {
           "Presence is cleared before renewal completes.",
           "Failure scenario: A renewing user is disconnected.",
           "Required change: Clear presence only after renewal settles.",
+          "Basis: PR acceptance criterion",
         ].join("\n\n"),
       },
       expect.objectContaining({ startLine: 13 }),
     ]);
     expect(report.summary).toContain("## Standards");
     expect(report.summary).toContain("## Spec");
+    expect(report.summary).toContain(
+      "- **P1** Renewal drops presence (`src/session.ts:12`)",
+    );
+  });
+
+  test("orders findings most severe first whatever order the reviewer returned", () => {
+    const report = buildCheckRunReport(
+      {
+        kind: "findings",
+        findings: [
+          { ...finding, severity: "P2", line: 1 },
+          { ...finding, severity: "P0", line: 2 },
+          { ...finding, severity: "P1", line: 3 },
+          { ...finding, severity: "P0", line: 4 },
+        ],
+      },
+      context,
+    );
+
+    expect(report.annotations.map((annotation) => annotation.startLine)).toEqual([2, 4, 3, 1]);
+    expect(report.summary.indexOf("session.ts:2")).toBeLessThan(
+      report.summary.indexOf("session.ts:1`"),
+    );
+  });
+
+  test("annotates every finding instead of capping at three", () => {
+    const findings = Array.from({ length: 5 }, (_, index) => ({ ...finding, line: index + 1 }));
+
+    const report = buildCheckRunReport({ kind: "findings", findings }, context);
+
+    expect(report.title).toBe("5 blocking findings");
+    expect(report.annotations).toHaveLength(5);
+  });
+
+  test("warns that more findings may exist only at the ceiling", () => {
+    const atCeiling = Array.from({ length: findingsCeiling }, (_, index) => ({
+      ...finding,
+      line: index + 1,
+    }));
+
+    const full = buildCheckRunReport({ kind: "findings", findings: atCeiling }, context);
+    const belowCeiling = buildCheckRunReport(
+      { kind: "findings", findings: atCeiling.slice(1) },
+      context,
+    );
+
+    expect(findingsCeiling).toBe(50);
+    expect(full.summary).toContain("Ceiling reached");
+    expect(belowCeiling.summary).not.toContain("Ceiling reached");
+  });
+
+  test("keeps the summary within GitHub's limit for the largest possible review", () => {
+    const largest: ReviewFinding = {
+      ...finding,
+      path: "p".repeat(500),
+      title: "t".repeat(200),
+      evidence: "e".repeat(1000),
+      failureScenario: "f".repeat(1000),
+      requestedChange: "r".repeat(1000),
+      source: "s".repeat(500),
+    };
+    const findings = Array.from({ length: findingsCeiling }, () => largest);
+
+    const report = buildCheckRunReport(
+      { kind: "findings", findings },
+      { ...context, purpose: "x".repeat(100_000) },
+    );
+
+    expect(report.summary.length).toBeLessThanOrEqual(checkRunSummaryLimit);
+    expect(report.summary).toContain("Summary truncated");
+    expect(report.summary).toContain("Reviewer: claude / claude-opus-5-5");
+    expect(report.annotations).toHaveLength(findingsCeiling);
   });
 
   test("fails a missing purpose and tells the author how to fix it", () => {

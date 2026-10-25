@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { createJsonParser } from "../schema/index.ts";
 
 export type ProviderId = "claude" | "codex";
@@ -34,10 +36,31 @@ interface ReviewOutput {
   findings: ReviewFinding[];
 }
 
+export interface ReviewOutputSchema {
+  properties: {
+    findings: {
+      maxItems: number;
+      items: { properties: { confidence: { minimum: number } } };
+    };
+  };
+  [keyword: string]: unknown;
+}
+
 export const reviewOutputSchemaUrl = new URL(
   "../../policies/schema/review-output.schema.json",
   import.meta.url,
 );
+
+export function reviewOutputSchema(): ReviewOutputSchema {
+  return JSON.parse(readFileSync(reviewOutputSchemaUrl, "utf8")) as ReviewOutputSchema;
+}
+
+export function reviewOutputSchemaPath(): string {
+  return reviewOutputSchemaUrl.pathname;
+}
+
+// The ceiling is GitHub's 50-annotation limit per check-run update, not a rubric choice.
+export const findingsCeiling = reviewOutputSchema().properties.findings.maxItems;
 
 const hunkHeader = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm;
 const findingTextFields = [

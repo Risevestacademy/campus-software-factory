@@ -60,13 +60,18 @@ request. GitHub records every bypass.
 ### What contributors see
 
 Every internal pull request into `dev` or `main` gets one `Factory PR Review`
-check on its head SHA after product CI passes. The summary is split into
-Standards and Spec, and each finding is a line annotation on the changed code.
+check on its head SHA after product CI passes. The summary lists one line per
+finding under Standards and Spec, most severe first. Each finding's evidence,
+failure scenario, and required change are in its line annotation.
+
+Every finding with confidence of at least 0.9 is posted. The only ceiling is
+GitHub's 50 annotations per check-run update; a review that reaches it says more
+may exist, and the pull request should be split.
 
 | Situation | Check |
 |---|---|
 | No change required | `success` |
-| 1-3 findings with confidence of at least 0.9 | `failure`, one annotation per finding |
+| Findings with confidence of at least 0.9 (up to 50) | `failure`, one annotation per finding |
 | Missing `## Change and measurable outcome` | `failure`; fix the description and re-run |
 | Reviewer error or invalid output after one retry | `failure` (technical); re-run allowed |
 | Fork pull request | `neutral`; human review only, no credentials used |

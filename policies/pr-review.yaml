@@ -3,8 +3,8 @@ version: 1
 checkName: Factory PR Review
 
 rubric:
-  version: 1
-  maxFindings: 3
+  version: 2
+  maxFindings: 50
   minimumConfidence: 0.9
 
 canary:

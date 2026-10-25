@@ -1,4 +1,4 @@
-import type { ProviderId, ReviewFinding } from "./contracts.ts";
+import { findingsCeiling, type ProviderId, type ReviewFinding } from "./contracts.ts";
 import type { ReviewMode } from "./provider-policy.ts";
 
 export const checkRunName = "Factory PR Review";
@@ -38,6 +38,16 @@ export interface CheckRunReport {
   annotations: CheckAnnotation[];
 }
 
+// GitHub rejects a check-run summary longer than this.
+export const checkRunSummaryLimit = 65_535;
+const truncationNotice = "\n\n_Summary truncated to fit GitHub's limit. Every finding is still annotated._";
+
+const severityOrder: Readonly<Record<ReviewFinding["severity"], number>> = {
+  P0: 0,
+  P1: 1,
+  P2: 2,
+};
+
 const externalIdPattern =
   /^factory-review:v1:(pending|clean|findings|missing-purpose|technical|fork):(\d+)$/;
 
@@ -55,7 +65,7 @@ export function buildCheckRunReport(
     conclusion,
     externalId: externalId(outcome.kind, context.ciRunId),
     title,
-    summary: [body, footer(context)].join("\n\n"),
+    summary: fitSummary(body, footer(context)),
     annotations,
   });
 
@@ -66,13 +76,15 @@ export function buildCheckRunReport(
         "No blocking findings",
         withPurpose(context, "The review found no change that must be made before merge."),
       );
-    case "findings":
+    case "findings": {
+      const findings = bySeverity(outcome.findings);
       return report(
         "failure",
-        `${outcome.findings.length} blocking finding${outcome.findings.length === 1 ? "" : "s"}`,
-        withPurpose(context, formatFindingSections(outcome.findings)),
-        outcome.findings.map(toAnnotation),
+        `${findings.length} blocking finding${findings.length === 1 ? "" : "s"}`,
+        withPurpose(context, formatFindingSections(findings) + ceilingNotice(findings)),
+        findings.map(toAnnotation),
       );
+    }
     case "missing-purpose":
       return outcome.reason === "absent"
         ? report(
@@ -112,7 +124,7 @@ export function formatFindingSections(findings: readonly ReviewFinding[]): strin
       const content =
         matchingFindings.length === 0
           ? "No requested changes."
-          : matchingFindings.map(formatFinding).join("\n\n");
+          : matchingFindings.map(formatFindingLine).join("\n");
       return `## ${axis === "standards" ? "Standards" : "Spec"}\n\n${content}`;
     })
     .join("\n\n");
@@ -155,15 +167,30 @@ function footer(context: CheckRunContext): string {
   ].join("\n");
 }
 
-function formatFinding(finding: ReviewFinding): string {
-  return [
-    `### ${finding.severity}: ${finding.title}`,
-    `- Location: \`${finding.path}:${finding.line}\``,
-    `- Evidence: ${finding.evidence}`,
-    `- Failure scenario: ${finding.failureScenario}`,
-    `- Required change: ${finding.requestedChange}`,
-    `- Basis: ${finding.source}`,
-  ].join("\n");
+function bySeverity(findings: readonly ReviewFinding[]): ReviewFinding[] {
+  return [...findings].sort(
+    (left, right) => severityOrder[left.severity] - severityOrder[right.severity],
+  );
+}
+
+function ceilingNotice(findings: readonly ReviewFinding[]): string {
+  return findings.length >= findingsCeiling
+    ? `\n\n**Ceiling reached:** GitHub accepts ${findingsCeiling} annotations per update, so more findings may exist. Split this pull request.`
+    : "";
+}
+
+// Detail lives in the annotations; one line per finding keeps the summary under GitHub's limit.
+function formatFindingLine(finding: ReviewFinding): string {
+  return `- **${finding.severity}** ${finding.title} (\`${finding.path}:${finding.line}\`)`;
+}
+
+function fitSummary(body: string, footerText: string): string {
+  const summary = `${body}\n\n${footerText}`;
+  if (summary.length <= checkRunSummaryLimit) {
+    return summary;
+  }
+  const room = checkRunSummaryLimit - footerText.length - truncationNotice.length - 2;
+  return `${body.slice(0, room)}${truncationNotice}\n\n${footerText}`;
 }
 
 function toAnnotation(finding: ReviewFinding): CheckAnnotation {
@@ -177,6 +204,7 @@ function toAnnotation(finding: ReviewFinding): CheckAnnotation {
       finding.evidence,
       `Failure scenario: ${finding.failureScenario}`,
       `Required change: ${finding.requestedChange}`,
+      `Basis: ${finding.source}`,
     ].join("\n\n"),
   };
 }

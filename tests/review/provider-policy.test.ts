@@ -9,7 +9,7 @@ const now = new Date("2026-10-25T00:00:00.000Z");
 
 const header = `version: 1
 checkName: Factory PR Review
-rubric: { version: 1, maxFindings: 3, minimumConfidence: 0.9 }
+rubric: { version: 2, maxFindings: 50, minimumConfidence: 0.9 }
 canary: { minimumPullRequests: 10, maxDays: 14, maxFalsePositives: 1, maxTechnicalErrorRate: 0.05, maxP95LatencyMinutes: 10 }
 repositories:
 `;

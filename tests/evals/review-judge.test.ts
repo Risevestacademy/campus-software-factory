@@ -6,9 +6,7 @@ import type { ReviewFinding } from "../../src/review/index.js";
 
 const expected: ExpectedReview = {
   status: "findings",
-  path: "src/session.ts",
-  lines: [5, 7],
-  severity: "P1",
+  defects: [{ path: "src/session.ts", lines: [5, 7], severity: "P1" }],
 };
 
 const finding: ReviewFinding = {
@@ -45,6 +43,27 @@ describe("judge", () => {
     ).toEqual({
       passed: false,
       detail: "found src/session.ts:6 but severity P2 is below P1",
+    });
+  });
+
+  test("passes several seeded defects only when every one is reported", () => {
+    const several: ExpectedReview = {
+      status: "findings",
+      defects: [
+        { path: "src/session.ts", lines: [5, 7], severity: "P1" },
+        { path: "src/session.ts", lines: [20, 22], severity: "P2" },
+      ],
+    };
+
+    expect(
+      judge(several, {
+        status: "findings",
+        findings: [finding, { ...finding, line: 21, severity: "P2" }],
+      }).passed,
+    ).toBe(true);
+    expect(judge(several, { status: "findings", findings: [finding] })).toEqual({
+      passed: false,
+      detail: "missed src/session.ts:20-22; got src/session.ts:6 Presence drops during renewal",
     });
   });
 

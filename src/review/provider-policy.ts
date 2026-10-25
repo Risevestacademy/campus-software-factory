@@ -40,7 +40,7 @@ export interface CanaryCriteria {
 export interface PrReviewPolicy {
   version: 1;
   checkName: "Factory PR Review";
-  rubric: { version: 1; maxFindings: 3; minimumConfidence: 0.9 };
+  rubric: { version: 2; maxFindings: 50; minimumConfidence: 0.9 };
   canary: CanaryCriteria;
   repositories: RepositoryReviewPolicy[];
 }

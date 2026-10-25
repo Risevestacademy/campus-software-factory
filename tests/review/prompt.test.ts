@@ -24,7 +24,7 @@ describe("reviewOutputSchema", () => {
   test("enforces the shared rubric limits", () => {
     const schema = reviewOutputSchema();
 
-    expect(schema.properties.findings.maxItems).toBe(3);
+    expect(schema.properties.findings.maxItems).toBe(50);
     expect(schema.properties.findings.items.properties.confidence.minimum).toBe(0.9);
   });
 
@@ -59,7 +59,8 @@ describe("renderReviewPrompt", () => {
     expect(prompt).toContain("untrusted evidence");
     expect(prompt).toContain("nearest changed line");
     expect(prompt).toContain(ticket.purpose);
-    expect(prompt).toContain("at most 3 defects, each with confidence of at least 0.9");
+    expect(prompt).toContain("Report every defect with confidence of at least 0.9");
+    expect(prompt).toContain("report the 50 most severe");
   });
 
   test("keeps a purpose from closing its own delimiter", () => {
