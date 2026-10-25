@@ -7,6 +7,14 @@ rubric:
   maxFindings: 50
   minimumConfidence: 0.9
 
+sizeLimit:
+  maxChangedLines: 400
+  maxChangedFiles: 15
+  excludedPaths:
+    - pnpm-lock.yaml
+    - package-lock.json
+    - yarn.lock
+
 canary:
   minimumPullRequests: 10
   maxDays: 14

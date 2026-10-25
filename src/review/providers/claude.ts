@@ -4,6 +4,8 @@ interface SdkResultMessage {
   type: "result";
   subtype?: unknown;
   is_error?: unknown;
+  num_turns?: unknown;
+  result?: unknown;
   structured_output?: unknown;
 }
 
@@ -18,6 +20,24 @@ export const claudeAdapter: ReviewProviderAdapter = {
       result.structured_output !== undefined
       ? JSON.stringify(result.structured_output)
       : "";
+  },
+  failureFrom(executionFile) {
+    const result = finalResult(executionFile);
+    if (result?.is_error !== true) {
+      return undefined;
+    }
+    if (
+      result.subtype === "error_max_turns" &&
+      typeof result.num_turns === "number" &&
+      Number.isSafeInteger(result.num_turns)
+    ) {
+      return `Claude stopped: error_max_turns after ${result.num_turns} turns`;
+    }
+    const detail =
+      typeof result.result === "string" && result.result.trim().length > 0
+        ? result.result.trim()
+        : "unknown error";
+    return `Claude reported an error: ${detail}`;
   },
 };
 

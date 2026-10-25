@@ -13,6 +13,13 @@ export type ReviewOutcome =
   | { kind: "findings"; findings: ReviewFinding[] }
   | { kind: "missing-purpose"; reason: "absent" | "too-vague" }
   | { kind: "technical"; reason: string }
+  | {
+      kind: "too-large";
+      changedLines: number;
+      changedFiles: number;
+      maxChangedLines: number;
+      maxChangedFiles: number;
+    }
   | { kind: "fork" };
 
 export type CheckOutcomeTag = ReviewOutcome["kind"] | "pending";
@@ -55,7 +62,7 @@ const purposeLabel = "**PR purpose:** ";
 const purposeTruncationMarker = " … (truncated)";
 
 const externalIdPattern =
-  /^factory-review:v1:(pending|clean|findings|missing-purpose|technical|fork):(\d+)$/;
+  /^factory-review:v1:(pending|clean|findings|missing-purpose|technical|too-large|fork):(\d+)$/;
 
 export function buildCheckRunReport(
   outcome: ReviewOutcome,
@@ -110,7 +117,13 @@ export function buildCheckRunReport(
       return report(
         "failure",
         "Review could not complete",
-        `The reviewer did not produce a valid result: ${outcome.reason}\n\nRe-run this workflow. A same-SHA rerun is allowed after technical errors.`,
+        `Review failed: ${outcome.reason}\n\nRe-run this workflow. A same-SHA rerun is allowed after technical errors.`,
+      );
+    case "too-large":
+      return report(
+        "neutral",
+        "Human review only (PR too large)",
+        `This pull request changes ${outcome.changedLines} lines across ${outcome.changedFiles} files. The AI review limit is ${outcome.maxChangedLines} changed lines and ${outcome.maxChangedFiles} changed files. CODEOWNER review remains required.`,
       );
     case "fork":
       return report(

@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 
 import { formatNotice, formatOutput } from "./github-output.ts";
 import { GitHubRestAdapter } from "./github-rest-adapter.ts";
@@ -6,10 +6,13 @@ import { loadRepositoryReview } from "./policy-loader.ts";
 import {
   createFactoryReviewExecution,
   providerAdapter,
+  readProviderOutput,
   renderReviewPrompt,
+  reviewMaxTurns,
   reviewOutputSchema,
   reviewOutputSchemaPath,
   type ExecutionPolicy,
+  type PublishResult,
   type ReviewTicket,
 } from "./index.ts";
 
@@ -22,11 +25,15 @@ if (!isPhase(phase)) {
 }
 
 const repository = required("REPOSITORY");
-const { review } = await loadRepositoryReview(
+const { review, policy: reviewPolicy } = await loadRepositoryReview(
   (entry) => entry.github === repository,
   new Date(),
 );
-const policy: ExecutionPolicy = { repository, review };
+const policy: ExecutionPolicy = {
+  repository,
+  review,
+  sizeLimit: reviewPolicy.sizeLimit,
+};
 const adapter = providerAdapter(policy.review.provider.id);
 const execution = createFactoryReviewExecution(
   policy,
@@ -57,16 +64,22 @@ switch (phase) {
     writeOutput("ticket", Buffer.from(JSON.stringify(ticket)).toString("base64url"));
     writeOutput("provider", policy.review.provider.id);
     writeOutput("model", policy.review.provider.model);
+    writeOutput("max_turns", String(reviewMaxTurns));
     writeOutput("output_schema", JSON.stringify(reviewOutputSchema()));
     writeOutput("output_schema_path", reviewOutputSchemaPath());
     writeOutput("prompt", renderReviewPrompt(ticket));
     break;
   }
   case "validate": {
-    const decision = await execution.validate({
-      ticket: decodeTicket(required("REVIEW_TICKET")),
-      modelOutputJson: adapter.outputFrom(readProviderOutput()),
-    });
+    const output = readProviderOutput(required("REVIEW_OUTPUT_FILE"), adapter);
+    const ticket = decodeTicket(required("REVIEW_TICKET"));
+    const decision =
+      output.failureReason === undefined
+        ? await execution.validate({
+            ticket,
+            modelOutputJson: output.modelOutputJson,
+          })
+        : { valid: false as const, reason: output.failureReason };
     writeOutput("valid", String(decision.valid));
     if (!decision.valid) {
       writeOutput("reason", decision.reason);
@@ -75,10 +88,18 @@ switch (phase) {
     break;
   }
   case "publish": {
-    const result = await execution.publish({
-      ticket: decodeTicket(required("REVIEW_TICKET")),
-      modelOutputJson: adapter.outputFrom(readProviderOutput()),
-    });
+    const output = readProviderOutput(required("REVIEW_OUTPUT_FILE"), adapter);
+    const ticket = decodeTicket(required("REVIEW_TICKET"));
+    let result: PublishResult;
+    if (output.failureReason === undefined) {
+      result = await execution.publish({
+        ticket,
+        modelOutputJson: output.modelOutputJson,
+      });
+    } else {
+      await execution.fail({ ticket, reason: output.failureReason });
+      result = { outcome: "technical", conclusion: "failure" };
+    }
     writeOutput("outcome", result.outcome);
     writeOutput("conclusion", result.conclusion);
     notice(`Factory review ${result.outcome}: ${result.conclusion}`);
@@ -107,12 +128,6 @@ function required(name: string): string {
 
 function optional(name: string): string {
   return process.env[name] ?? "";
-}
-
-// Model output travels by file because Linux caps one environment string at 128 KiB.
-function readProviderOutput(): string {
-  const path = required("REVIEW_OUTPUT_FILE");
-  return existsSync(path) ? readFileSync(path, "utf8") : "";
 }
 
 function positiveInteger(value: string, label: string): number {

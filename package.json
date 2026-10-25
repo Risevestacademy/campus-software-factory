@@ -13,6 +13,7 @@
     "drift:review-gate": "tsx src/drift/review-gate-cli.ts",
     "metrics:report": "tsx src/metrics/cli.ts",
     "policy:validate": "tsx src/policy/cli.ts",
+    "repin": "tsx src/repin/cli.ts",
     "review:eval": "tsx evals/review/run.ts",
     "review:evaluate": "tsx src/review/canary-cli.ts",
     "test": "vitest run",

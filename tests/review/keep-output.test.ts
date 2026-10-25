@@ -20,15 +20,13 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-function keep(provider: string, outcome: string, source: string): string {
+function keep(provider: string, source: string): string {
   const target = join(directory, "review-output");
   execFileSync("bash", [script], {
     env: {
       PATH: process.env.PATH,
       PROVIDER: provider,
-      CLAUDE_OUTCOME: provider === "claude" ? outcome : "skipped",
       CLAUDE_FILE: provider === "claude" ? source : "",
-      CODEX_OUTCOME: provider === "codex" ? outcome : "skipped",
       CODEX_FILE: join(directory, "codex-output.txt"),
       REVIEW_OUTPUT_FILE: target,
     },
@@ -43,31 +41,31 @@ function providerFile(name: string, contents: string): string {
 }
 
 describe("keep-output.sh", () => {
-  test.each(["claude", "codex"])("moves a successful %s attempt's file into place", (provider) => {
+  test.each(["claude", "codex"])("moves a %s attempt's file into place", (provider) => {
     const source = providerFile(
       provider === "claude" ? "claude-execution-output.json" : "codex-output.txt",
       "output",
     );
 
-    const target = keep(provider, "success", source);
+    const target = keep(provider, source);
 
     expect(readFileSync(target, "utf8")).toBe("output");
     expect(existsSync(source)).toBe(false);
   });
 
-  test("drops a failed attempt's file so the next attempt cannot reuse it", () => {
-    const source = providerFile("claude-execution-output.json", "stale");
+  test("keeps a failed attempt's file so its reason can be diagnosed", () => {
+    const source = providerFile("claude-execution-output.json", "error result");
 
-    const target = keep("claude", "failure", source);
+    const target = keep("claude", source);
 
-    expect(existsSync(target)).toBe(false);
+    expect(existsSync(target)).toBe(true);
     expect(existsSync(source)).toBe(false);
   });
 
   test("clears an earlier output when the attempt wrote no file", () => {
     const earlier = providerFile("review-output", "earlier");
 
-    const target = keep("claude", "success", "");
+    const target = keep("claude", "");
 
     expect(target).toBe(earlier);
     expect(existsSync(target)).toBe(false);
@@ -75,6 +73,6 @@ describe("keep-output.sh", () => {
 
   test("rejects an unknown provider", () => {
 
-    expect(() => keep("other", "success", "")).toThrow();
+    expect(() => keep("other", "")).toThrow();
   });
 });

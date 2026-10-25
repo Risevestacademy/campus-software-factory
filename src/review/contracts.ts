@@ -4,6 +4,8 @@ import { createJsonParser } from "../schema/index.ts";
 
 export type ProviderId = "claude" | "codex";
 
+export const reviewMaxTurns = 25;
+
 export interface ReviewFinding {
   axis: "spec" | "standards";
   severity: "P0" | "P1" | "P2";
@@ -30,6 +32,8 @@ export type ReviewResult =
 export interface ChangedFile {
   path: string;
   patch: string | null;
+  additions: number;
+  deletions: number;
 }
 
 export interface LineRange {

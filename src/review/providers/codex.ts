@@ -10,4 +10,7 @@ export const codexAdapter: ReviewProviderAdapter = {
     const trimmed = raw.trim();
     return wholeFence.exec(trimmed)?.[1] ?? trimmed;
   },
+  failureFrom() {
+    return undefined;
+  },
 };

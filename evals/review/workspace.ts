@@ -72,10 +72,40 @@ export async function buildWorkspace(reviewCase: ReviewCase): Promise<ReviewWork
     root,
     baseSha,
     headSha,
-    changedFiles: changedPaths.map((path) => ({
-      path,
-      patch: git(repository, "diff", baseSha, headSha, "--", path),
-    })),
+    changedFiles: changedPaths.map((path) =>
+      changedFile(repository, baseSha, headSha, path),
+    ),
+  };
+}
+
+function changedFile(
+  repository: string,
+  baseSha: string,
+  headSha: string,
+  path: string,
+): ChangedFile {
+  const [additions, deletions] = git(
+    repository,
+    "diff",
+    "--numstat",
+    baseSha,
+    headSha,
+    "--",
+    path,
+  ).split("\t");
+  if (
+    additions === undefined ||
+    deletions === undefined ||
+    !/^\d+$/.test(additions) ||
+    !/^\d+$/.test(deletions)
+  ) {
+    throw new Error(`Cannot measure changed lines for ${path}`);
+  }
+  return {
+    path,
+    additions: Number(additions),
+    deletions: Number(deletions),
+    patch: git(repository, "diff", baseSha, headSha, "--", path),
   };
 }
 

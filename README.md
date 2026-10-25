@@ -23,6 +23,7 @@ The repository owner runs all commands:
 
 ```bash
 pnpm policy:validate
+pnpm repin <repository-id> # uses the current authenticated gh login
 pnpm test
 pnpm typecheck
 pnpm metrics:report path/to/metrics-input.json
@@ -74,6 +75,7 @@ may exist, and the pull request should be split.
 | Findings with confidence of at least 0.9 (up to 50) | `failure`, one annotation per finding |
 | Missing `## Change and measurable outcome` | `failure`; fix the description and re-run |
 | Reviewer error or invalid output after one retry | `failure` (technical); re-run allowed |
+| More than 400 changed lines or 15 changed files, excluding configured lockfiles | `neutral`; human review only, no provider usage |
 | Fork pull request | `neutral`; human review only, no credentials used |
 | Draft, or CI not green | no check yet; the required check stays pending |
 
@@ -84,8 +86,11 @@ re-rolled.
 ### How it runs
 
 `templates/factory-review-caller.yml` triggers on `workflow_run` after product
-CI completes. The `factory-pr-review` action reads policy from the pinned
-factory commit, checks out the head as untrusted evidence in `pr/` and the
+CI completes. Before starting a provider, the action excludes configured
+lockfiles and measures changed lines and files. Oversized pull requests receive
+a completed neutral check and never start an AI review. The
+`factory-pr-review` action reads policy from the pinned factory commit, checks
+out the head as untrusted evidence in `pr/` and the
 target branch's guidance in `trusted/`, and runs the one provider pinned for
 that repository in `policies/pr-review.yaml`: Claude or Codex, never a
 fallback. Output is validated deterministically; a finding can block only if
@@ -129,15 +134,21 @@ required check pending.
 4. Copy the caller template to the product's default branch, pin it to the
    factory commit from step 3, and set its CI workflow name. A pin to a commit
    where the repository is `disabled` skips every review.
-5. Label every finding-bearing pull request `factory-review:valid` or
+5. After every later factory merge, run `pnpm repin <repository-id>` and merge
+   the generated pull request into `dev`.
+6. Label every finding-bearing pull request `factory-review:valid` or
    `factory-review:false-positive` for 10 pull requests or 14 days.
-6. Run `pnpm review:evaluate`. It must pass.
-7. Product CODEOWNERS approve `mode: enforced`, and the `factory-quality`
+7. Run `pnpm review:evaluate`. It must pass.
+8. Product CODEOWNERS approve `mode: enforced`, and the `factory-quality`
    ruleset requires `Factory PR Review` on `dev`, then on `main`.
 
 A provider, model, rubric, or major action change returns that repository to
 advisory and starts a new canary. `pnpm policy:validate` enforces the provider
 and model half: it rejects a `provider` that differs from `canaryProvider`.
+
+GitHub treats a neutral required check as passing. In enforced mode, oversized
+pull requests therefore rely on CODEOWNER approval and the repository's human
+review rules.
 
 ### Known residuals
 

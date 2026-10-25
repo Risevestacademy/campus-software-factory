@@ -29,7 +29,14 @@ const sessionPatch = [
   " context",
 ].join("\n");
 
-const files: ChangedFile[] = [{ path: "src/session.ts", patch: sessionPatch }];
+const files: ChangedFile[] = [
+  {
+    path: "src/session.ts",
+    patch: sessionPatch,
+    additions: 1,
+    deletions: 0,
+  },
+];
 
 describe("newSideLineRanges", () => {
   test("reads every hunk and defaults an omitted count to one line", () => {
@@ -69,7 +76,14 @@ describe("validateFindingLocations", () => {
     expect(() =>
       validateFindingLocations(
         [{ ...finding, line: 5000 }],
-        [{ path: "src/session.ts", patch: null }],
+        [
+          {
+            path: "src/session.ts",
+            patch: null,
+            additions: 1,
+            deletions: 0,
+          },
+        ],
       ),
     ).not.toThrow();
   });

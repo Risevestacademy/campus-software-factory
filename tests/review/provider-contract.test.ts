@@ -1,9 +1,14 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import {
   findingsCeiling,
   parseReviewResult,
   providerAdapter,
+  readProviderOutput,
   type ProviderId,
   type ReviewFinding,
   type ReviewResult,
@@ -60,7 +65,7 @@ describe("provider adapters", () => {
   );
 
   test.each([
-    ["an error result", claudeExecutionFile({ subtype: "error_max_turns", structured_output: expected })],
+    ["an error result", claudeExecutionFile({ subtype: "error_max_turns", is_error: true, num_turns: 25, structured_output: expected })],
     ["a success flagged as an error", claudeExecutionFile({ subtype: "success", is_error: true, structured_output: expected })],
     ["a result without structured output", claudeExecutionFile({ subtype: "success", is_error: false })],
     ["a file that is not a message list", fixtureJson],
@@ -68,6 +73,41 @@ describe("provider adapters", () => {
     expect(() => parseReviewResult(providerAdapter("claude").outputFrom(executionFile))).toThrow(
       "Review output must be valid JSON",
     );
+  });
+
+  test("reports Claude max-turn exhaustion with the actual turn count", () => {
+    const executionFile = claudeExecutionFile({
+      subtype: "error_max_turns",
+      is_error: true,
+      num_turns: 25,
+      result: "Reached max turns",
+    });
+
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toBe(
+      "Claude stopped: error_max_turns after 25 turns",
+    );
+  });
+
+  test("reports other Claude errors with their result text", () => {
+    const executionFile = claudeExecutionFile({
+      subtype: "error_during_execution",
+      is_error: true,
+      result: "Authentication failed",
+    });
+
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toBe(
+      "Claude reported an error: Authentication failed",
+    );
+  });
+
+  test("reports a provider that failed before writing its output file", () => {
+    const path = join(tmpdir(), `missing-provider-output-${randomUUID()}`);
+
+    expect(readProviderOutput(path, providerAdapter("claude"))).toEqual({
+      modelOutputJson: "",
+      failureReason:
+        "provider step failed before writing output; see the job log",
+    });
   });
 
   test("claude reads output larger than Linux's 128 KiB environment string limit", () => {

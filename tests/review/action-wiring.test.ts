@@ -102,6 +102,14 @@ describe("Factory PR Review composite action wiring", () => {
     }
   });
 
+  test("passes the preflight turn budget to every Claude attempt", () => {
+    for (const id of ["claude_1", "claude_2"]) {
+      expect(step(id).with?.claude_args).toContain(
+        "--max-turns ${{ steps.preflight.outputs.max_turns }}",
+      );
+    }
+  });
+
   test("never passes model output through an environment variable or input", () => {
     for (const entry of steps) {
       expect(text(entry), entry.id).not.toContain("structured_output");
@@ -124,11 +132,9 @@ describe("Factory PR Review composite action wiring", () => {
     for (const attempt of ["1", "2"]) {
       const keep = step(`keep_${attempt}`);
       expect(keep.run).toBe('bash "$GITHUB_ACTION_PATH/keep-output.sh"');
-      expect(keep.env?.CLAUDE_OUTCOME).toBe(`\${{ steps.claude_${attempt}.outcome }}`);
       expect(keep.env?.CLAUDE_FILE).toBe(
         `\${{ steps.claude_${attempt}.outputs.execution_file }}`,
       );
-      expect(keep.env?.CODEX_OUTCOME).toBe(`\${{ steps.codex_${attempt}.outcome }}`);
       expect(keep.env?.REVIEW_OUTPUT_FILE).toBe(
         `\${{ runner.temp }}/factory-review-output-${attempt}`,
       );

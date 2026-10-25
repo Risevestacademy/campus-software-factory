@@ -37,10 +37,17 @@ export interface CanaryCriteria {
   maxP95LatencyMinutes: number;
 }
 
+export interface ReviewSizeLimit {
+  maxChangedLines: number;
+  maxChangedFiles: number;
+  excludedPaths: string[];
+}
+
 export interface PrReviewPolicy {
   version: 1;
   checkName: "Factory PR Review";
   rubric: { version: 2; maxFindings: 50; minimumConfidence: 0.9 };
+  sizeLimit: ReviewSizeLimit;
   canary: CanaryCriteria;
   repositories: RepositoryReviewPolicy[];
 }
