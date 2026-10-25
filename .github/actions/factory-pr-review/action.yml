@@ -111,6 +111,12 @@ runs:
           cp -R .factory-skills/antfu/skills/vitest "$home/skills/vitest"
         done
 
+    - name: Install bubblewrap for Claude subprocess isolation
+      id: bubblewrap
+      if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'claude'
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/install-bubblewrap.sh"
+
     - name: Review with Claude (attempt 1)
       id: claude_1
       if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'claude'
