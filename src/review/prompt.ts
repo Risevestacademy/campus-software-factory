@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { reviewOutputSchemaUrl } from "./contracts.ts";
 import type { ReviewTicket } from "./execution.ts";
 
 export interface ReviewOutputSchema {
@@ -12,11 +13,6 @@ export interface ReviewOutputSchema {
   [keyword: string]: unknown;
 }
 
-const reviewOutputSchemaUrl = new URL(
-  "../../policies/schema/review-output.schema.json",
-  import.meta.url,
-);
-
 export function reviewOutputSchema(): ReviewOutputSchema {
   return JSON.parse(readFileSync(reviewOutputSchemaUrl, "utf8")) as ReviewOutputSchema;
 }
@@ -27,7 +23,8 @@ export function reviewOutputSchemaPath(): string {
 
 export function renderReviewPrompt(ticket: ReviewTicket): string {
   const purpose = ticket.purpose.replaceAll("</pr-purpose>", "<\\/pr-purpose>");
-  const { maxItems } = reviewOutputSchema().properties.findings;
+  const { maxItems, items } = reviewOutputSchema().properties.findings;
+  const minimumConfidence = items.properties.confidence.minimum;
 
   return `Perform one purpose-first, merge-blocking review of pull request #${ticket.pullRequestNumber}.
 
@@ -54,7 +51,7 @@ Review on two separate axes:
 1. Standards: violations of the trusted repository standards.
 2. Spec: defects that prevent the stated purpose or acceptance outcome.
 
-Report at most ${maxItems} defects, each with confidence of at least 0.9. Every
+Report at most ${maxItems} defects, each with confidence of at least ${minimumConfidence}. Every
 finding must name a path changed by this pull request and a line inside one of
 its changed hunks on the new side. For a defect caused by deleted code, anchor
 it on the nearest changed line that remains. Every finding needs evidence, the

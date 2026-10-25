@@ -1,4 +1,7 @@
+import { readFile } from "node:fs/promises";
+
 import { describe, expect, test } from "vitest";
+import { parse } from "yaml";
 
 import {
   renderReviewPrompt,
@@ -23,6 +26,21 @@ describe("reviewOutputSchema", () => {
     expect(schema.properties.findings.maxItems).toBe(3);
     expect(schema.properties.findings.items.properties.confidence.minimum).toBe(0.9);
   });
+
+  test("matches the rubric pinned in the review policy", async () => {
+    const policy = parse(
+      await readFile(new URL("../../policies/pr-review.yaml", import.meta.url), "utf8"),
+    ) as { rubric: { maxFindings: number; minimumConfidence: number } };
+    const { findings } = reviewOutputSchema().properties;
+
+    expect({
+      maxFindings: findings.maxItems,
+      minimumConfidence: findings.items.properties.confidence.minimum,
+    }).toEqual({
+      maxFindings: policy.rubric.maxFindings,
+      minimumConfidence: policy.rubric.minimumConfidence,
+    });
+  });
 });
 
 describe("renderReviewPrompt", () => {
@@ -36,6 +54,7 @@ describe("renderReviewPrompt", () => {
     expect(prompt).toContain("untrusted evidence");
     expect(prompt).toContain("nearest changed line");
     expect(prompt).toContain(ticket.purpose);
+    expect(prompt).toContain("at most 3 defects, each with confidence of at least 0.9");
   });
 
   test("keeps a purpose from closing its own delimiter", () => {

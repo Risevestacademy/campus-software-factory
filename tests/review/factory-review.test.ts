@@ -347,7 +347,7 @@ describe("parseReviewResult", () => {
           findings: [finding],
         }),
       ),
-    ).toThrow(/unexpected property/i);
+    ).toThrow("/ must NOT have additional properties");
   });
 
   test("rejects findings below the blocking confidence floor", () => {
@@ -358,7 +358,40 @@ describe("parseReviewResult", () => {
           findings: [{ ...finding, confidence: 0.89 }],
         }),
       ),
-    ).toThrow("finding 0 confidence must be at least 0.9");
+    ).toThrow("/findings/0/confidence must be >= 0.9");
+  });
+
+  test("enforces the output schema length limits on model text", () => {
+    expect(() =>
+      parseReviewResult(
+        JSON.stringify({ status: "findings", findings: [{ ...finding, title: "x".repeat(201) }] }),
+      ),
+    ).toThrow("/findings/0/title must NOT have more than 200 characters");
+  });
+
+  test("rejects a fractional finding line", () => {
+    expect(() =>
+      parseReviewResult(
+        JSON.stringify({ status: "findings", findings: [{ ...finding, line: 42.5 }] }),
+      ),
+    ).toThrow("/findings/0/line must be integer");
+  });
+
+  test("rejects whitespace-only finding text", () => {
+    expect(() =>
+      parseReviewResult(
+        JSON.stringify({ status: "findings", findings: [{ ...finding, evidence: "   " }] }),
+      ),
+    ).toThrow("finding 0 evidence must not be blank");
+  });
+
+  test("rejects a status that contradicts its findings", () => {
+    expect(() =>
+      parseReviewResult(JSON.stringify({ status: "clean", findings: [finding] })),
+    ).toThrow('Review status "clean" requires an empty findings array');
+    expect(() =>
+      parseReviewResult(JSON.stringify({ status: "findings", findings: [] })),
+    ).toThrow('Review status "findings" requires at least one finding');
   });
 });
 

@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
 
+import { formatNotice, formatOutput } from "./github-output.ts";
 import { GitHubRestAdapter } from "./github-rest-adapter.ts";
 import { loadRepositoryReview } from "./policy-loader.ts";
 import {
@@ -59,7 +59,7 @@ switch (phase) {
     writeOutput("model", policy.review.provider.model);
     writeOutput("output_schema", JSON.stringify(reviewOutputSchema()));
     writeOutput("output_schema_path", reviewOutputSchemaPath());
-    writeMultilineOutput("prompt", renderReviewPrompt(ticket));
+    writeOutput("prompt", renderReviewPrompt(ticket));
     break;
   }
   case "validate": {
@@ -118,19 +118,11 @@ function positiveInteger(value: string, label: string): number {
 }
 
 function notice(message: string): void {
-  process.stdout.write(`::notice::${message}\n`);
+  process.stdout.write(formatNotice(message));
 }
 
 function writeOutput(name: string, value: string): void {
-  appendFileSync(required("GITHUB_OUTPUT"), `${name}=${value}\n`);
-}
-
-function writeMultilineOutput(name: string, value: string): void {
-  const delimiter = `campus_${randomUUID()}`;
-  appendFileSync(
-    required("GITHUB_OUTPUT"),
-    `${name}<<${delimiter}\n${value}\n${delimiter}\n`,
-  );
+  appendFileSync(required("GITHUB_OUTPUT"), formatOutput(name, value));
 }
 
 function decodeTicket(encoded: string): ReviewTicket {

@@ -69,6 +69,13 @@ describe("Factory PR Review composite action wiring", () => {
     }
   });
 
+  test("scrubs secrets from Claude subprocesses and hands it only the job token", () => {
+    for (const id of ["claude_1", "claude_2"]) {
+      expect(step(id).env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe("1");
+      expect(step(id).with?.github_token).toBe("${{ inputs.github-token }}");
+    }
+  });
+
   test("gates each provider step on the policy-selected provider", () => {
     for (const id of ["claude_1", "claude_2"]) {
       expect(step(id).if).toContain("steps.preflight.outputs.provider == 'claude'");

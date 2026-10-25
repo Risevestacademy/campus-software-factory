@@ -54,34 +54,31 @@ export function evaluateCanary(input: {
     const ciTime = Date.parse(record.ciCompletedAt);
     return ciTime >= startTime && ciTime < endTime;
   });
-  const reviewed = inWindow.filter((record) => record.checks.length > 0);
-  const decisiveChecks = reviewed.map((record) =>
-    record.checks.filter((check) => isDecisiveOutcome(check.outcome)),
-  );
-  const technicalCount = reviewed
+  const decided = inWindow.filter((record) => decisiveChecksOf(record).length > 0);
+  const pullRequests = verdictsByPullRequest(decided);
+  const technicalCount = inWindow
     .flatMap((record) => record.checks)
     .filter((check) => check.outcome === "technical").length;
-  const decisiveCount = decisiveChecks.flat().length;
-  const findingRecords = reviewed.filter((record) =>
-    record.checks.some((check) => check.outcome === "findings"),
-  );
+  const decisiveCount = decided.flatMap(decisiveChecksOf).length;
 
   const results: CanaryResult[] = [
-    atLeast("reviewed-pull-requests", reviewed.length, 1),
+    atLeast("reviewed-pull-requests", pullRequests.length, 1),
     atMost(
       "duplicate-reviews",
-      decisiveChecks.filter((checks) => checks.length > 1).length,
+      decided.filter((record) => decisiveChecksOf(record).length > 1).length,
       0,
     ),
     atMost(
       "unlabeled-findings",
-      findingRecords.filter((record) => !hasDisposition(record)).length,
+      pullRequests.filter(
+        (pullRequest) => pullRequest.hadFindings && !hasDisposition(pullRequest.labels),
+      ).length,
       0,
     ),
     atMost(
       "false-positives",
-      reviewed.filter((record) =>
-        record.labels.includes(dispositionLabels.falsePositive),
+      pullRequests.filter((pullRequest) =>
+        pullRequest.labels.has(dispositionLabels.falsePositive),
       ).length,
       criteria.maxFalsePositives,
     ),
@@ -94,7 +91,7 @@ export function evaluateCanary(input: {
     ),
     atMost(
       "p95-latency-minutes",
-      nearestRankP95(decisionLatencies(reviewed)),
+      nearestRankP95(decisionLatencies(decided)),
       criteria.maxP95LatencyMinutes,
     ),
     attestedZero("credential-incidents", attestation.credentialIncidents),
@@ -108,29 +105,51 @@ export function evaluateCanary(input: {
   ];
 
   const decidable =
-    reviewed.length >= criteria.minimumPullRequests || input.now.getTime() >= endTime;
+    pullRequests.length >= criteria.minimumPullRequests || input.now.getTime() >= endTime;
   const report: CanaryReport = {
     decidable,
     passed: decidable && results.every((entry) => entry.passed),
-    sample: reviewed.length,
-    unreviewedHeads: inWindow.length - reviewed.length,
+    sample: pullRequests.length,
+    unreviewedHeads: inWindow.length - decided.length,
     windowEndsAt: new Date(endTime).toISOString(),
     results,
   };
   return decidable ? report : { ...report, reason: "insufficient evidence" };
 }
 
-function hasDisposition(record: CanaryRecord): boolean {
-  return (
-    record.labels.includes(dispositionLabels.valid) ||
-    record.labels.includes(dispositionLabels.falsePositive)
-  );
+interface PullRequestVerdicts {
+  hadFindings: boolean;
+  labels: Set<string>;
+}
+
+function decisiveChecksOf(record: CanaryRecord): CanaryRecord["checks"] {
+  return record.checks.filter((check) => isDecisiveOutcome(check.outcome));
+}
+
+// The canary threshold and disposition labels are per pull request, while
+// records are per head SHA: one PR pushed ten times is still one sample.
+function verdictsByPullRequest(records: readonly CanaryRecord[]): PullRequestVerdicts[] {
+  const byNumber = new Map<number, PullRequestVerdicts>();
+  for (const record of records) {
+    const verdicts = byNumber.get(record.pullRequestNumber) ?? {
+      hadFindings: false,
+      labels: new Set<string>(),
+    };
+    verdicts.hadFindings ||= record.checks.some((check) => check.outcome === "findings");
+    record.labels.forEach((label) => verdicts.labels.add(label));
+    byNumber.set(record.pullRequestNumber, verdicts);
+  }
+  return [...byNumber.values()];
+}
+
+function hasDisposition(labels: ReadonlySet<string>): boolean {
+  return labels.has(dispositionLabels.valid) || labels.has(dispositionLabels.falsePositive);
 }
 
 function decisionLatencies(records: readonly CanaryRecord[]): number[] {
   return records.flatMap((record) => {
-    const decidedAt = record.checks
-      .filter((check) => isDecisiveOutcome(check.outcome) && check.completedAt !== null)
+    const decidedAt = decisiveChecksOf(record)
+      .filter((check) => check.completedAt !== null)
       .map((check) => Date.parse(check.completedAt ?? ""))
       .sort((left, right) => left - right)[0];
     return decidedAt === undefined

@@ -114,6 +114,47 @@ describe("evaluateCanary", () => {
     ).toBe(1);
   });
 
+  test("counts pull requests, not head commits, toward the sample", () => {
+    const tenPushesToOnePullRequest = healthy(10).map((entry) => ({
+      ...entry,
+      pullRequestNumber: 1,
+    }));
+
+    expect(evaluate(tenPushesToOnePullRequest)).toMatchObject({
+      decidable: false,
+      sample: 1,
+    });
+  });
+
+  test("does not count heads without a decisive review as reviewed", () => {
+    const undecided = [
+      record(40, { checks: [{ outcome: "missing-purpose", completedAt: at(minuteMs) }] }),
+      record(41, { checks: [{ outcome: "technical", completedAt: at(minuteMs) }] }),
+      record(42, { checks: [{ outcome: "fork", completedAt: at(minuteMs) }] }),
+    ];
+
+    expect(evaluate([...healthy(9), ...undecided])).toMatchObject({
+      decidable: false,
+      sample: 9,
+      unreviewedHeads: 3,
+    });
+  });
+
+  test("counts a false-positive verdict once per pull request across its heads", () => {
+    const labeledHead = (index: number) =>
+      record(index, {
+        pullRequestNumber: 1,
+        checks: [{ outcome: "findings", completedAt: at((index + 1) * 60 * minuteMs + minuteMs) }],
+        labels: ["factory-review:false-positive"],
+      });
+    const records = [labeledHead(0), labeledHead(1), ...healthy(11).slice(2)];
+
+    expect(result(evaluate(records), "false-positives")).toMatchObject({
+      value: 1,
+      passed: true,
+    });
+  });
+
   test("fails a head with more than one decisive review", () => {
     const records = healthy(10);
     records[0] = record(0, {
