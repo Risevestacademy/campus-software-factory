@@ -16,12 +16,22 @@ canary:
 
 repositories:
   - id: campus-web
-    mode: disabled
+    mode: advisory
     ciWorkflowName: CI
     targetBranches: [dev, main]
     provider:
       id: claude
       model: claude-opus-5-5
+    canaryStartsAt: "2026-10-25T12:00:00Z"
+    canaryProvider:
+      id: claude
+      model: claude-opus-5-5
+    credential:
+      secret: CLAUDE_CODE_OAUTH_TOKEN
+      ownership: personal
+      owner: AJ1732
+      expiresOn: "2027-10-25"
+      rotateBy: "2027-09-25"
   - id: campus-server
     mode: disabled
     ciWorkflowName: CI
