@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import {
   parseReviewResult,
   renderReviewPrompt,
+  reviewMaxTurns,
   reviewOutputSchemaPath,
   validateFindingLocations,
   type ReviewResult,
@@ -124,7 +125,7 @@ async function review(
       "--model",
       model,
       "--max-turns",
-      "12",
+      String(reviewMaxTurns),
       "--allowedTools",
       "Read",
       "Glob",

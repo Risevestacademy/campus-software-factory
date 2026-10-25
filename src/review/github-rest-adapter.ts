@@ -106,6 +106,14 @@ export class GitHubRestAdapter implements GitHubReviewPort {
         return {
           path: requireString(file.filename, "pull request file name"),
           patch: typeof file.patch === "string" ? file.patch : null,
+          additions: requireNonNegativeInteger(
+            file.additions,
+            "pull request file additions",
+          ),
+          deletions: requireNonNegativeInteger(
+            file.deletions,
+            "pull request file deletions",
+          ),
         };
       }),
     );
@@ -359,6 +367,14 @@ function requireNumber(value: unknown, label: string): number {
     throw new Error(`${label} must be an integer`);
   }
   return value;
+}
+
+function requireNonNegativeInteger(value: unknown, label: string): number {
+  const number = requireNumber(value, label);
+  if (number < 0) {
+    throw new Error(`${label} must not be negative`);
+  }
+  return number;
 }
 
 function requireBoolean(value: unknown, label: string): boolean {

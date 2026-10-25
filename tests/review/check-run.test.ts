@@ -206,6 +206,27 @@ describe("buildCheckRunReport", () => {
     expect(report.summary).toContain("Re-run");
   });
 
+  test("marks an oversized pull request neutral with its measured limits", () => {
+    const report = buildCheckRunReport(
+      {
+        kind: "too-large",
+        changedLines: 401,
+        changedFiles: 16,
+        maxChangedLines: 400,
+        maxChangedFiles: 15,
+      },
+      { ...context, purpose: null },
+    );
+
+    expect(report).toMatchObject({
+      conclusion: "neutral",
+      externalId: "factory-review:v1:too-large:123",
+      title: "Human review only (PR too large)",
+    });
+    expect(report.summary).toContain("401 lines across 16 files");
+    expect(report.summary).toContain("400 changed lines and 15 changed files");
+  });
+
   test("marks fork pull requests neutral for human-only review", () => {
     expect(
       buildCheckRunReport({ kind: "fork" }, { ...context, purpose: null }),
@@ -244,6 +265,7 @@ describe("isDecisiveOutcome", () => {
     ["technical", false],
     ["missing-purpose", false],
     ["pending", false],
+    ["too-large", false],
     ["fork", false],
   ] as const)("treats %s as decisive=%s", (outcome, decisive) => {
     expect(isDecisiveOutcome(outcome)).toBe(decisive);

@@ -1,3 +1,4 @@
+import { matchesPath } from "../policy/index.ts";
 import {
   parseReviewResult,
   validateFindingLocations,
@@ -12,7 +13,10 @@ import {
   type CheckRunReport,
   type ReviewOutcome,
 } from "./check-run.ts";
-import type { RepositoryReviewPolicy } from "./provider-policy.ts";
+import type {
+  RepositoryReviewPolicy,
+  ReviewSizeLimit,
+} from "./provider-policy.ts";
 
 export interface WorkflowRun {
   name: string;
@@ -44,6 +48,7 @@ export interface FactoryCheckRun {
 export interface ExecutionPolicy {
   repository: string;
   review: RepositoryReviewPolicy;
+  sizeLimit: ReviewSizeLimit;
 }
 
 export interface ReviewRun {
@@ -92,6 +97,7 @@ export type PreflightSkipReason =
   | "not-open"
   | "repository-not-allowed"
   | "stale-head"
+  | "too-large"
   | "unexpected-workflow"
   | "unsupported-event"
   | "untargeted-branch";
@@ -120,7 +126,7 @@ export function createFactoryReviewExecution(
   policy: ExecutionPolicy,
   github: GitHubReviewPort,
 ) {
-  const { review } = policy;
+  const { review, sizeLimit } = policy;
 
   function context(ciRunId: number, purpose: string | null): CheckRunContext {
     return {
@@ -237,6 +243,30 @@ export function createFactoryReviewExecution(
         return skip("already-reviewed");
       }
 
+      const size = measurePullRequest(
+        await github.listPullRequestFiles(run.repository, pullRequest.number),
+        sizeLimit,
+      );
+      if (
+        size.changedLines > sizeLimit.maxChangedLines ||
+        size.changedFiles > sizeLimit.maxChangedFiles
+      ) {
+        await github.publishCheckRun(
+          run.repository,
+          pullRequest.headSha,
+          buildCheckRunReport(
+            {
+              kind: "too-large",
+              ...size,
+              maxChangedLines: sizeLimit.maxChangedLines,
+              maxChangedFiles: sizeLimit.maxChangedFiles,
+            },
+            context(run.workflowRunId, null),
+          ),
+        );
+        return skip("too-large");
+      }
+
       const purpose = extractPrPurpose(pullRequest.body);
       if (purpose === null) {
         await github.publishCheckRun(
@@ -332,6 +362,23 @@ export function extractPrPurpose(body: string): string | null {
 
 function skip(reason: PreflightSkipReason): PreflightDecision {
   return { kind: "skip", reason };
+}
+
+function measurePullRequest(
+  files: readonly ChangedFile[],
+  sizeLimit: ReviewSizeLimit,
+): { changedLines: number; changedFiles: number } {
+  const included = files.filter(
+    (file) =>
+      !sizeLimit.excludedPaths.some((pattern) => matchesPath(file.path, pattern)),
+  );
+  return {
+    changedLines: included.reduce(
+      (total, file) => total + file.additions + file.deletions,
+      0,
+    ),
+    changedFiles: included.length,
+  };
 }
 
 function isDecisiveCheck(check: FactoryCheckRun): boolean {

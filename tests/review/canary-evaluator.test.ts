@@ -140,6 +140,21 @@ describe("evaluateCanary", () => {
     });
   });
 
+  test("excludes oversized heads from every canary count", () => {
+    const oversized = record(50, {
+      checks: [{ outcome: "too-large", completedAt: at(3 * minuteMs) }],
+    });
+
+    const report = evaluate([...healthy(9), oversized]);
+
+    expect(report).toMatchObject({
+      decidable: false,
+      sample: 9,
+      unreviewedHeads: 0,
+    });
+    expect(result(report, "technical-error-rate")).toMatchObject({ value: 0 });
+  });
+
   test("counts a false-positive verdict once per pull request across its heads", () => {
     const labeledHead = (index: number) =>
       record(index, {

@@ -54,9 +54,14 @@ export function evaluateCanary(input: {
     const ciTime = Date.parse(record.ciCompletedAt);
     return ciTime >= startTime && ciTime < endTime;
   });
-  const decided = inWindow.filter((record) => decisiveChecksOf(record).length > 0);
+  const reviewable = inWindow.filter(
+    (record) => !record.checks.some((check) => check.outcome === "too-large"),
+  );
+  const decided = reviewable.filter(
+    (record) => decisiveChecksOf(record).length > 0,
+  );
   const pullRequests = verdictsByPullRequest(decided);
-  const technicalCount = inWindow
+  const technicalCount = reviewable
     .flatMap((record) => record.checks)
     .filter((check) => check.outcome === "technical").length;
   const decisiveCount = decided.flatMap(decisiveChecksOf).length;
@@ -110,7 +115,7 @@ export function evaluateCanary(input: {
     decidable,
     passed: decidable && results.every((entry) => entry.passed),
     sample: pullRequests.length,
-    unreviewedHeads: inWindow.length - decided.length,
+    unreviewedHeads: reviewable.length - decided.length,
     windowEndsAt: new Date(endTime).toISOString(),
     results,
   };

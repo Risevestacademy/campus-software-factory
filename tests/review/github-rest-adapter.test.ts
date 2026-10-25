@@ -38,16 +38,31 @@ describe("GitHubRestAdapter", () => {
           Array.from({ length: 100 }, (_, index) => ({
             filename: `src/file-${index}.ts`,
             patch: "@@ -1 +1 @@\n-a\n+b",
+            additions: 1,
+            deletions: 1,
           })),
           '<https://api.github.com/page=2>; rel="next"',
         ),
       )
-      .mockResolvedValueOnce(jsonResponse([{ filename: "assets/logo.png" }]));
+      .mockResolvedValueOnce(
+        jsonResponse([
+          {
+            filename: "assets/logo.png",
+            additions: 0,
+            deletions: 0,
+          },
+        ]),
+      );
 
     const files = await adapter(fetcher).listPullRequestFiles("rise/campus-web", 21);
 
     expect(files).toHaveLength(101);
-    expect(files.at(-1)).toEqual({ path: "assets/logo.png", patch: null });
+    expect(files.at(-1)).toEqual({
+      path: "assets/logo.png",
+      patch: null,
+      additions: 0,
+      deletions: 0,
+    });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 

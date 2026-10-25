@@ -19,6 +19,12 @@ import {
 
 const repository = "Risevestacademy/campus-web";
 
+const sizeLimit = {
+  maxChangedLines: 400,
+  maxChangedFiles: 15,
+  excludedPaths: ["pnpm-lock.yaml", "package-lock.json", "yarn.lock"],
+};
+
 const finding: ReviewFinding = {
   axis: "spec",
   severity: "P1",
@@ -63,7 +69,12 @@ const pullRequest: PullRequest = {
 };
 
 const changedFiles: ChangedFile[] = [
-  { path: "src/session.ts", patch: "@@ -40,3 +40,4 @@\n a\n+b\n c\n d" },
+  {
+    path: "src/session.ts",
+    patch: "@@ -40,3 +40,4 @@\n a\n+b\n c\n d",
+    additions: 1,
+    deletions: 0,
+  },
 ];
 
 interface FakeGitHub {
@@ -79,6 +90,7 @@ function createGitHub(
     workflowRun?: Partial<WorkflowRun>;
     pullRequest?: Partial<PullRequest>;
     checkRuns?: FactoryCheckRun[];
+    changedFiles?: ChangedFile[];
   } = {},
 ): FakeGitHub {
   let currentPullRequest = { ...pullRequest, ...options.pullRequest };
@@ -92,7 +104,7 @@ function createGitHub(
     port: {
       getWorkflowRun: async () => ({ ...workflowRun, ...options.workflowRun }),
       getPullRequest: async () => currentPullRequest,
-      listPullRequestFiles: async () => changedFiles,
+      listPullRequestFiles: async () => options.changedFiles ?? changedFiles,
       listFactoryCheckRuns: async () => options.checkRuns ?? [],
       startCheckRun: async (_repository, headSha, externalId) => {
         fake.started.push({ headSha, externalId });
@@ -111,7 +123,7 @@ function createGitHub(
 
 function execution(github: FakeGitHub, review: Partial<RepositoryReviewPolicy> = {}) {
   return createFactoryReviewExecution(
-    { repository, review: { ...reviewPolicy, ...review } },
+    { repository, review: { ...reviewPolicy, ...review }, sizeLimit },
     github.port,
   );
 }
@@ -227,7 +239,80 @@ describe("FactoryReviewExecution.preflight", () => {
       kind: "ready",
     });
   });
+
+  test("reviews a pull request exactly at both size limits", async () => {
+    const github = createGitHub({ changedFiles: sizedFiles(15, 400) });
+
+    await expect(execution(github).preflight(run)).resolves.toMatchObject({
+      kind: "ready",
+    });
+    expect(github.started).toHaveLength(1);
+  });
+
+  test.each([
+    ["one changed line over", sizedFiles(15, 401)],
+    ["one changed file over", sizedFiles(16, 400)],
+  ])("marks a pull request %s as human-review-only", async (_label, files) => {
+    const github = createGitHub({
+      pullRequest: { body: "No purpose section" },
+      changedFiles: files,
+    });
+
+    await expect(execution(github).preflight(run)).resolves.toEqual({
+      kind: "skip",
+      reason: "too-large",
+    });
+    expect(github.started).toEqual([]);
+    expect(github.published).toEqual([
+      {
+        headSha: "abc",
+        report: expect.objectContaining({
+          conclusion: "neutral",
+          externalId: "factory-review:v1:too-large:123",
+          title: "Human review only (PR too large)",
+        }) as CheckRunReport,
+      },
+    ]);
+  });
+
+  test("excludes lockfiles from changed-line and changed-file limits", async () => {
+    const github = createGitHub({
+      changedFiles: [
+        {
+          path: "pnpm-lock.yaml",
+          patch: null,
+          additions: 10_000,
+          deletions: 10_000,
+        },
+        {
+          path: "package-lock.json",
+          patch: null,
+          additions: 10_000,
+          deletions: 10_000,
+        },
+        {
+          path: "yarn.lock",
+          patch: null,
+          additions: 10_000,
+          deletions: 10_000,
+        },
+      ],
+    });
+
+    await expect(execution(github).preflight(run)).resolves.toMatchObject({
+      kind: "ready",
+    });
+  });
 });
+
+function sizedFiles(fileCount: number, changedLines: number): ChangedFile[] {
+  return Array.from({ length: fileCount }, (_, index) => ({
+    path: `src/file-${index}.ts`,
+    patch: null,
+    additions: index === 0 ? changedLines - fileCount + 1 : 1,
+    deletions: 0,
+  }));
+}
 
 describe("FactoryReviewExecution.publish", () => {
   test("completes the pending check as success for a clean review", async () => {

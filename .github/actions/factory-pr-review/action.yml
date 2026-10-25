@@ -136,7 +136,7 @@ runs:
         prompt: ${{ steps.preflight.outputs.prompt }}
         claude_args: >-
           --model ${{ steps.preflight.outputs.model }}
-          --max-turns 12
+          --max-turns ${{ steps.preflight.outputs.max_turns }}
           --allowedTools "Read" "Glob" "Grep" "Skill" "Bash(git -C pr diff:*)" "Bash(git -C pr show:*)" "Bash(git -C pr log:*)"
           --disallowedTools "Edit" "Write" "NotebookEdit" "WebFetch" "WebSearch"
           --json-schema '${{ steps.preflight.outputs.output_schema }}'
@@ -162,9 +162,7 @@ runs:
       shell: bash
       env:
         PROVIDER: ${{ steps.preflight.outputs.provider }}
-        CLAUDE_OUTCOME: ${{ steps.claude_1.outcome }}
         CLAUDE_FILE: ${{ steps.claude_1.outputs.execution_file }}
-        CODEX_OUTCOME: ${{ steps.codex_1.outcome }}
         CODEX_FILE: ${{ runner.temp }}/factory-codex-output-1.txt
         REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-1
       run: bash "$GITHUB_ACTION_PATH/keep-output.sh"
@@ -201,7 +199,7 @@ runs:
         prompt: ${{ steps.preflight.outputs.prompt }}
         claude_args: >-
           --model ${{ steps.preflight.outputs.model }}
-          --max-turns 12
+          --max-turns ${{ steps.preflight.outputs.max_turns }}
           --allowedTools "Read" "Glob" "Grep" "Skill" "Bash(git -C pr diff:*)" "Bash(git -C pr show:*)" "Bash(git -C pr log:*)"
           --disallowedTools "Edit" "Write" "NotebookEdit" "WebFetch" "WebSearch"
           --json-schema '${{ steps.preflight.outputs.output_schema }}'
@@ -227,9 +225,7 @@ runs:
       shell: bash
       env:
         PROVIDER: ${{ steps.preflight.outputs.provider }}
-        CLAUDE_OUTCOME: ${{ steps.claude_2.outcome }}
         CLAUDE_FILE: ${{ steps.claude_2.outputs.execution_file }}
-        CODEX_OUTCOME: ${{ steps.codex_2.outcome }}
         CODEX_FILE: ${{ runner.temp }}/factory-codex-output-2.txt
         REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-2
       run: bash "$GITHUB_ACTION_PATH/keep-output.sh"

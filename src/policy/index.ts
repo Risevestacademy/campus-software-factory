@@ -103,7 +103,7 @@ export function classifyChangedPaths(
 
   const sensitiveTiers = changedPaths.flatMap((changedPath) =>
     policy.sensitivePaths
-      .filter((rule) => pathMatches(changedPath, rule.pattern))
+      .filter((rule) => matchesPath(changedPath, rule.pattern))
       .map((rule) => rule.tier),
   );
 
@@ -113,7 +113,7 @@ export function classifyChangedPaths(
 
   const allowlistedTiers = changedPaths.map((changedPath) => {
     const matchingRules = policy.mechanicalAllowlist.filter((rule) =>
-      pathMatches(changedPath, rule.pattern),
+      matchesPath(changedPath, rule.pattern),
     );
     return matchingRules.length === 0
       ? undefined
@@ -177,7 +177,7 @@ function highestTier(tiers: readonly RiskTier[]): RiskTier {
   );
 }
 
-function pathMatches(changedPath: string, pattern: string): boolean {
+export function matchesPath(changedPath: string, pattern: string): boolean {
   const normalizedPath = changedPath.replaceAll("\\", "/");
   return matchesGlob(normalizedPath, pattern);
 }
