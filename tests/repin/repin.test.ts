@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 
 import type { RepositoryPolicy } from "../../src/policy/index.js";
 import {
+  callerWorkflowPath,
+  pullRequestTemplatePath,
   repinRepository,
   replaceFactoryPin,
   type OpenPullRequestInput,
@@ -15,6 +17,27 @@ const workflow = `name: Factory PR Review
 jobs:
   review:
     uses: Risevestacademy/campus-software-factory/.github/actions/factory-pr-review@${oldSha}
+`;
+const pullRequestTemplate = `## Summary
+
+<!-- Summary -->
+
+## Change and measurable outcome
+
+<!-- Outcome -->
+
+## Changes
+
+-
+
+## Type of Change
+
+- [ ] Feature
+- [ ] Chore / Maintenance
+
+## Repository-specific checks
+
+- [ ] Keep this repository-specific control
 `;
 const repository: RepositoryPolicy = {
   id: "campus-web",
@@ -50,7 +73,7 @@ describe("replaceFactoryPin", () => {
 });
 
 describe("repinRepository", () => {
-  test("creates a branch, updates the caller, and opens a PR into dev", async () => {
+  test("creates a repin PR from the target repository template", async () => {
     const fake = createGitHub();
 
     await expect(repinRepository(repository, fake.port)).resolves.toEqual({
@@ -67,7 +90,7 @@ describe("repinRepository", () => {
     expect(fake.updatedFiles).toEqual([
       expect.objectContaining({
         repository: repository.github,
-        path: ".github/workflows/factory-pr-review.yml",
+        path: callerWorkflowPath,
         branch: "chore/repin-factory-review",
         fileSha: "workflow-blob",
         content: workflow.replace(oldSha, factorySha),
@@ -78,9 +101,21 @@ describe("repinRepository", () => {
         repository: repository.github,
         head: "chore/repin-factory-review",
         base: "dev",
-        body: expect.stringContaining("## Change and measurable outcome") as string,
       }),
     ]);
+    const body = fake.pullRequests[0]?.body;
+    expect(body?.match(/^## .+$/gm)).toEqual([
+      "## Summary",
+      "## Change and measurable outcome",
+      "## Changes",
+      "## Type of Change",
+      "## Repository-specific checks",
+    ]);
+    expect(body).toContain(
+      "New campus-web CI runs use the current factory review policy and action.",
+    );
+    expect(body).toContain("- [x] Chore / Maintenance");
+    expect(body).toContain("- [ ] Keep this repository-specific control");
   });
 
   test.each([
@@ -88,6 +123,11 @@ describe("repinRepository", () => {
       "the repin branch already exists",
       { branchExists: true },
       `Branch "chore/repin-factory-review" already exists`,
+    ],
+    [
+      "the target PR template cannot be loaded",
+      { pullRequestTemplateError: new Error("template unavailable") },
+      "template unavailable",
     ],
     [
       "the caller has no factory pin",
@@ -109,7 +149,14 @@ describe("repinRepository", () => {
   });
 });
 
-function createGitHub(options: { branchExists?: boolean; workflow?: string } = {}) {
+interface GitHubOptions {
+  branchExists?: boolean;
+  workflow?: string;
+  pullRequestTemplate?: string;
+  pullRequestTemplateError?: Error;
+}
+
+function createGitHub(options: GitHubOptions = {}) {
   const createdBranches: Array<Record<string, string>> = [];
   const updatedFiles: UpdateRepositoryFileInput[] = [];
   const pullRequests: OpenPullRequestInput[] = [];
@@ -117,10 +164,24 @@ function createGitHub(options: { branchExists?: boolean; workflow?: string } = {
     getFactoryMainSha: async () => factorySha,
     branchExists: async () => options.branchExists ?? false,
     getBranchSha: async () => "c".repeat(40),
-    getFile: async () => ({
-      content: options.workflow ?? workflow,
-      sha: "workflow-blob",
-    }),
+    getFile: async (_repository, path) => {
+      if (path === callerWorkflowPath) {
+        return {
+          content: options.workflow ?? workflow,
+          sha: "workflow-blob",
+        };
+      }
+      if (path === pullRequestTemplatePath) {
+        if (options.pullRequestTemplateError !== undefined) {
+          throw options.pullRequestTemplateError;
+        }
+        return {
+          content: options.pullRequestTemplate ?? pullRequestTemplate,
+          sha: "template-blob",
+        };
+      }
+      throw new Error(`Unexpected repository file path "${path}"`);
+    },
     createBranch: async (githubRepository: string, branch: string, sha: string) => {
       createdBranches.push({ repository: githubRepository, branch, sha });
     },

@@ -134,8 +134,9 @@ required check pending.
 4. Copy the caller template to the product's default branch, pin it to the
    factory commit from step 3, and set its CI workflow name. A pin to a commit
    where the repository is `disabled` skips every review.
-5. After every later factory merge, run `pnpm repin <repository-id>` and merge
-   the generated pull request into `dev`.
+5. After every later factory merge, run `pnpm repin <repository-id>`. The
+   command populates the target repository's `.github/pull_request_template.md`
+   from `dev`. Merge the generated pull request into `dev`.
 6. Label every finding-bearing pull request `factory-review:valid` or
    `factory-review:false-positive` for 10 pull requests or 14 days.
 7. Run `pnpm review:evaluate`. It must pass.
