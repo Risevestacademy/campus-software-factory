@@ -166,6 +166,9 @@
         },
         "credential": {
           "$ref": "#/$defs/credential"
+        },
+        "usageLimitFallback": {
+          "$ref": "#/$defs/usageLimitFallback"
         }
       },
       "allOf": [
@@ -217,6 +220,35 @@
         "model": {
           "type": "string",
           "pattern": "^(?!.*latest)[a-z0-9][a-z0-9.-]*$"
+        },
+        "effort": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      }
+    },
+    "usageLimitFallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "canaryProvider",
+        "credential"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "canaryProvider": {
+          "$ref": "#/$defs/provider"
+        },
+        "credential": {
+          "$ref": "#/$defs/credential"
         }
       }
     },

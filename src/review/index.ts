@@ -5,3 +5,4 @@ export * from "./check-run.ts";
 export * from "./prompt.ts";
 export * from "./providers/index.ts";
 export * from "./canary-evaluator.ts";
+export * from "./attempt-router.ts";

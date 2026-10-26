@@ -1,11 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import type { ProviderId } from "../contracts.ts";
-import type { ReviewProviderAdapter } from "./adapter.ts";
+import type { ProviderFailure, ReviewProviderAdapter } from "./adapter.ts";
 import { claudeAdapter } from "./claude.ts";
 import { codexAdapter } from "./codex.ts";
 
-export type { ReviewProviderAdapter } from "./adapter.ts";
+export type {
+  ProviderFailure,
+  ProviderFailureKind,
+  ReviewProviderAdapter,
+} from "./adapter.ts";
 
 const adapters: Readonly<Record<ProviderId, ReviewProviderAdapter>> = {
   claude: claudeAdapter,
@@ -18,7 +22,7 @@ export function providerAdapter(id: ProviderId): ReviewProviderAdapter {
 
 export interface ProviderOutput {
   modelOutputJson: string;
-  failureReason?: string;
+  failure?: ProviderFailure;
 }
 
 export function readProviderOutput(
@@ -28,16 +32,19 @@ export function readProviderOutput(
   if (!existsSync(path)) {
     return {
       modelOutputJson: "",
-      failureReason: "provider step failed before writing output; see the job log",
+      failure: {
+        kind: "technical",
+        reason: "provider step failed before writing output; see the job log",
+      },
     };
   }
   const providerFile = readFileSync(path, "utf8");
   const modelOutputJson = adapter.outputFrom(providerFile);
-  const failureReason =
+  const failure =
     modelOutputJson.length === 0
       ? adapter.failureFrom(providerFile)
       : undefined;
-  return failureReason === undefined
+  return failure === undefined
     ? { modelOutputJson }
-    : { modelOutputJson, failureReason };
+    : { modelOutputJson, failure };
 }

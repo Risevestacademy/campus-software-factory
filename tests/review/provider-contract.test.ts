@@ -83,9 +83,10 @@ describe("provider adapters", () => {
       result: "Reached max turns",
     });
 
-    expect(providerAdapter("claude").failureFrom?.(executionFile)).toBe(
-      "Claude stopped: error_max_turns after 25 turns",
-    );
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toEqual({
+      kind: "technical",
+      reason: "Claude stopped: error_max_turns after 25 turns",
+    });
   });
 
   test("reports other Claude errors with their result text", () => {
@@ -95,9 +96,69 @@ describe("provider adapters", () => {
       result: "Authentication failed",
     });
 
-    expect(providerAdapter("claude").failureFrom?.(executionFile)).toBe(
-      "Claude reported an error: Authentication failed",
-    );
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toEqual({
+      kind: "technical",
+      reason: "Claude reported an error: Authentication failed",
+    });
+  });
+
+  test("classifies Claude usage exhaustion and captures its refill time", () => {
+    const executionFile = claudeExecutionFile({
+      subtype: "error_during_execution",
+      is_error: true,
+      result: "You've hit your limit · resets at 3:00 PM (Africa/Lagos)",
+    });
+
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toEqual({
+      kind: "usage-limit",
+      reason:
+        "Claude reported an error: You've hit your limit · resets at 3:00 PM (Africa/Lagos)",
+      refillAt: "3:00 PM (Africa/Lagos)",
+    });
+  });
+
+  test("recognizes Claude's session-limit message and refill format", () => {
+    const executionFile = claudeExecutionFile({
+      subtype: "error_during_execution",
+      is_error: true,
+      result:
+        "You've hit your session limit · resets 1pm (Europe/Berlin) (error type rate_limit, HTTP 429)",
+    });
+
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toEqual({
+      kind: "usage-limit",
+      reason:
+        "Claude reported an error: You've hit your session limit · resets 1pm (Europe/Berlin) (error type rate_limit, HTTP 429)",
+      refillAt: "1pm (Europe/Berlin)",
+    });
+  });
+
+  test("classifies Claude usage exhaustion when no refill time is reported", () => {
+    const executionFile = claudeExecutionFile({
+      subtype: "error_during_execution",
+      is_error: true,
+      result: "Usage limit reached",
+    });
+
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toEqual({
+      kind: "usage-limit",
+      reason: "Claude reported an error: Usage limit reached",
+    });
+  });
+
+  test("keeps transient Claude throttling technical instead of failing over", () => {
+    const executionFile = claudeExecutionFile({
+      subtype: "error_during_execution",
+      is_error: true,
+      result:
+        "API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited",
+    });
+
+    expect(providerAdapter("claude").failureFrom?.(executionFile)).toEqual({
+      kind: "technical",
+      reason:
+        "Claude reported an error: API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited",
+    });
   });
 
   test("reports a provider that failed before writing its output file", () => {
@@ -105,8 +166,10 @@ describe("provider adapters", () => {
 
     expect(readProviderOutput(path, providerAdapter("claude"))).toEqual({
       modelOutputJson: "",
-      failureReason:
-        "provider step failed before writing output; see the job log",
+      failure: {
+        kind: "technical",
+        reason: "provider step failed before writing output; see the job log",
+      },
     });
   });
 

@@ -40,6 +40,21 @@ repositories:
       owner: AJ1732
       expiresOn: "2027-10-25"
       rotateBy: "2027-09-25"
+    usageLimitFallback:
+      provider:
+        id: codex
+        model: gpt-6.1-sol
+        effort: medium
+      canaryProvider:
+        id: codex
+        model: gpt-6.1-sol
+        effort: medium
+      credential:
+        secret: OPENAI_API_KEY
+        ownership: personal
+        owner: AJ1732
+        expiresOn: "2027-10-25"
+        rotateBy: "2027-09-25"
   - id: campus-server
     mode: disabled
     ciWorkflowName: CI

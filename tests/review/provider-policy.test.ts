@@ -33,6 +33,17 @@ const disabledClaude = `    mode: disabled
     provider: { id: claude, model: claude-opus-5-5 }
 `;
 
+const codexFallback = `    usageLimitFallback:
+      provider: { id: codex, model: gpt-6.1-sol, effort: medium }
+      canaryProvider: { id: codex, model: gpt-6.1-sol, effort: medium }
+      credential:
+        secret: OPENAI_API_KEY
+        ownership: personal
+        owner: aj1732
+        expiresOn: "2027-01-01"
+        rotateBy: "2026-12-15"
+`;
+
 function webRepository(fields: string): string {
   return `${header}  - id: campus-web
     ciWorkflowName: CI
@@ -54,6 +65,17 @@ describe("parsePrReviewPolicy", () => {
       ["campus-server", "disabled"],
       ["campus-mobile", "disabled"],
     ]);
+    expect(policy.repositories[0]?.usageLimitFallback).toEqual({
+      provider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
+      canaryProvider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
+      credential: {
+        secret: "OPENAI_API_KEY",
+        ownership: "personal",
+        owner: "AJ1732",
+        expiresOn: "2027-10-25",
+        rotateBy: "2027-09-25",
+      },
+    });
   });
 
   test("lets a disabled repository omit credential metadata", () => {
@@ -118,7 +140,7 @@ describe("parsePrReviewPolicy", () => {
     const source = webRepository(
       advisoryClaude.replaceAll(
         "id: claude, model: claude-opus-5-5",
-        "id: codex, model: gpt-5.5-codex",
+        "id: codex, model: gpt-6.1-sol, effort: medium",
       ) + personalCredential,
     );
 
@@ -174,6 +196,101 @@ describe("parsePrReviewPolicy", () => {
       id: "claude",
       model: "claude-opus-5-5",
     });
+  });
+
+  test("accepts a canary-pinned Codex fallback for Claude usage exhaustion", () => {
+    const policy = parsePrReviewPolicy(
+      webRepository(advisoryClaude + personalCredential + codexFallback),
+      registryIds,
+      now,
+    );
+
+    expect(policy.repositories[0]?.usageLimitFallback).toEqual({
+      provider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
+      canaryProvider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
+      credential: {
+        secret: "OPENAI_API_KEY",
+        ownership: "personal",
+        owner: "aj1732",
+        expiresOn: "2027-01-01",
+        rotateBy: "2026-12-15",
+      },
+    });
+  });
+
+  test("rejects usage-limit fallback when Claude is not the primary provider", () => {
+    const codexPrimary = advisoryClaude.replaceAll(
+      "id: claude, model: claude-opus-5-5",
+      "id: codex, model: gpt-6.1-sol, effort: medium",
+    );
+    const codexCredential = personalCredential.replace(
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "OPENAI_API_KEY",
+    );
+
+    expect(() =>
+      parsePrReviewPolicy(
+        webRepository(codexPrimary + codexCredential + codexFallback),
+        registryIds,
+        now,
+      ),
+    ).toThrow(
+      'Repository "campus-web" usage-limit fallback requires Claude as the primary provider',
+    );
+  });
+
+  test("rejects a usage-limit fallback that does not use Codex", () => {
+    const source = webRepository(
+      advisoryClaude +
+        personalCredential +
+        codexFallback.replaceAll(
+          "id: codex, model: gpt-6.1-sol, effort: medium",
+          "id: claude, model: claude-opus-5-5",
+        ),
+    );
+
+    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
+      'Repository "campus-web" usage-limit fallback provider must be Codex',
+    );
+  });
+
+  test("rejects fallback model or effort changes that keep the old canary", () => {
+    const source = webRepository(
+      advisoryClaude +
+        personalCredential +
+        codexFallback.replace(
+          "provider: { id: codex, model: gpt-6.1-sol, effort: medium }",
+          "provider: { id: codex, model: gpt-6.1-sol, effort: xhigh }",
+        ),
+    );
+
+    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
+      'Repository "campus-web" usage-limit fallback codex/gpt-6.1-sol/xhigh differs from its canary codex/gpt-6.1-sol/medium; start a new canary',
+    );
+  });
+
+  test("rejects a fallback wired to the wrong credential secret", () => {
+    const source = webRepository(
+      advisoryClaude +
+        personalCredential +
+        codexFallback.replace("secret: OPENAI_API_KEY", "secret: CLAUDE_CODE_OAUTH_TOKEN"),
+    );
+
+    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
+      'Repository "campus-web" usage-limit fallback credential secret CLAUDE_CODE_OAUTH_TOKEN must be OPENAI_API_KEY for provider codex',
+    );
+  });
+
+  test("requires explicit reasoning effort for Codex", () => {
+    const source = webRepository(
+      advisoryClaude +
+        personalCredential +
+        codexFallback.replaceAll(", effort: medium", ""),
+    );
+
+    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
+      'Repository "campus-web" usage-limit fallback provider codex/gpt-6.1-sol must pin reasoning effort',
+    );
   });
 
   test("rejects repositories missing from the registry", () => {

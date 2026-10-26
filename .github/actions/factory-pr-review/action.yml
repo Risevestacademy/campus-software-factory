@@ -12,10 +12,10 @@ inputs:
     description: Token with actions, contents, and pull-requests read plus checks write.
     required: true
   claude-code-oauth-token:
-    description: Claude credential; required only when policy selects Claude.
+    description: Claude credential; required when policy selects Claude as primary.
     required: false
   openai-api-key:
-    description: OpenAI credential; required only when policy selects Codex.
+    description: OpenAI credential; required when policy selects Codex or Codex fallback.
     required: false
 
 outputs:
@@ -152,6 +152,7 @@ runs:
         output-file: ${{ runner.temp }}/factory-codex-output-1.txt
         output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
         model: ${{ steps.preflight.outputs.model }}
+        effort: ${{ steps.preflight.outputs.effort }}
         codex-home: ${{ runner.temp }}/factory-codex-home
         permission-profile: ":read-only"
         safety-strategy: drop-sudo
@@ -164,7 +165,7 @@ runs:
         PROVIDER: ${{ steps.preflight.outputs.provider }}
         CLAUDE_FILE: ${{ steps.claude_1.outputs.execution_file }}
         CODEX_FILE: ${{ runner.temp }}/factory-codex-output-1.txt
-        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-1
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
       run: bash "$GITHUB_ACTION_PATH/keep-output.sh"
 
     - name: Validate first review output
@@ -176,13 +177,34 @@ runs:
         REPOSITORY: ${{ inputs.repository }}
         GITHUB_API_URL: ${{ github.api_url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        PROVIDER: ${{ steps.preflight.outputs.provider }}
         REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
-        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-1
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
       run: pnpm exec tsx src/review/action-runner.ts validate
+
+    - name: Route after review attempt 1
+      id: route_1
+      if: steps.preflight.outputs.eligible == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VALID: ${{ steps.validate_1.outputs.valid }}
+        FAILURE_KIND: ${{ steps.validate_1.outputs.failure_kind }}
+        VALIDATION_REFILL_AT: ${{ steps.validate_1.outputs.refill_at }}
+        PROVIDER: ${{ steps.preflight.outputs.provider }}
+        MODEL: ${{ steps.preflight.outputs.model }}
+        EFFORT: ${{ steps.preflight.outputs.effort }}
+        PROVIDER_ATTEMPT: "1"
+        FALLBACK_USED: "false"
+        REFILL_AT: ""
+      run: pnpm exec tsx src/review/action-runner.ts route
 
     - name: Review with Claude (attempt 2)
       id: claude_2
-      if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'claude' && steps.validate_1.outputs.valid != 'true'
+      if: steps.route_1.outputs.run_next == 'true' && steps.route_1.outputs.next_provider == 'claude'
       continue-on-error: true
       uses: anthropics/claude-code-action@6c690188da61cf16ee7debb28383ba67f02abb4c # v1.0.242
       env:
@@ -198,7 +220,7 @@ runs:
         show_full_output: "false"
         prompt: ${{ steps.preflight.outputs.prompt }}
         claude_args: >-
-          --model ${{ steps.preflight.outputs.model }}
+          --model ${{ steps.route_1.outputs.next_model }}
           --max-turns ${{ steps.preflight.outputs.max_turns }}
           --allowedTools "Read" "Glob" "Grep" "Skill" "Bash(git -C pr diff:*)" "Bash(git -C pr show:*)" "Bash(git -C pr log:*)"
           --disallowedTools "Edit" "Write" "NotebookEdit" "WebFetch" "WebSearch"
@@ -206,7 +228,7 @@ runs:
 
     - name: Review with Codex (attempt 2)
       id: codex_2
-      if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'codex' && steps.validate_1.outputs.valid != 'true'
+      if: steps.route_1.outputs.run_next == 'true' && steps.route_1.outputs.next_provider == 'codex'
       continue-on-error: true
       uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13
       with:
@@ -214,21 +236,178 @@ runs:
         prompt: ${{ steps.preflight.outputs.prompt }}
         output-file: ${{ runner.temp }}/factory-codex-output-2.txt
         output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
-        model: ${{ steps.preflight.outputs.model }}
+        model: ${{ steps.route_1.outputs.next_model }}
+        effort: ${{ steps.route_1.outputs.next_effort }}
         codex-home: ${{ runner.temp }}/factory-codex-home
         permission-profile: ":read-only"
         safety-strategy: drop-sudo
 
     - name: Keep review output (attempt 2)
       id: keep_2
-      if: steps.preflight.outputs.eligible == 'true' && steps.validate_1.outputs.valid != 'true'
+      if: steps.route_1.outputs.run_next == 'true'
       shell: bash
       env:
-        PROVIDER: ${{ steps.preflight.outputs.provider }}
+        PROVIDER: ${{ steps.route_1.outputs.next_provider }}
         CLAUDE_FILE: ${{ steps.claude_2.outputs.execution_file }}
         CODEX_FILE: ${{ runner.temp }}/factory-codex-output-2.txt
-        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-2
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
       run: bash "$GITHUB_ACTION_PATH/keep-output.sh"
+
+    - name: Validate review output (attempt 2)
+      id: validate_2
+      if: steps.route_1.outputs.run_next == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PROVIDER: ${{ steps.route_1.outputs.next_provider }}
+        REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
+      run: pnpm exec tsx src/review/action-runner.ts validate
+
+    - name: Route after review attempt 2
+      id: route_2
+      if: steps.route_1.outputs.run_next == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VALID: ${{ steps.validate_2.outputs.valid }}
+        FAILURE_KIND: ${{ steps.validate_2.outputs.failure_kind }}
+        VALIDATION_REFILL_AT: ${{ steps.validate_2.outputs.refill_at }}
+        PROVIDER: ${{ steps.route_1.outputs.next_provider }}
+        MODEL: ${{ steps.route_1.outputs.next_model }}
+        EFFORT: ${{ steps.route_1.outputs.next_effort }}
+        PROVIDER_ATTEMPT: ${{ steps.route_1.outputs.next_provider_attempt }}
+        FALLBACK_USED: ${{ steps.route_1.outputs.next_fallback_used }}
+        REFILL_AT: ${{ steps.route_1.outputs.next_refill_at }}
+      run: pnpm exec tsx src/review/action-runner.ts route
+
+    - name: Review with Codex (attempt 3)
+      id: codex_3
+      if: steps.route_2.outputs.run_next == 'true' && steps.route_2.outputs.next_provider == 'codex'
+      continue-on-error: true
+      uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13
+      with:
+        openai-api-key: ${{ inputs.openai-api-key }}
+        prompt: ${{ steps.preflight.outputs.prompt }}
+        output-file: ${{ runner.temp }}/factory-codex-output-3.txt
+        output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
+        model: ${{ steps.route_2.outputs.next_model }}
+        effort: ${{ steps.route_2.outputs.next_effort }}
+        codex-home: ${{ runner.temp }}/factory-codex-home
+        permission-profile: ":read-only"
+        safety-strategy: drop-sudo
+
+    - name: Keep review output (attempt 3)
+      id: keep_3
+      if: steps.route_2.outputs.run_next == 'true'
+      shell: bash
+      env:
+        PROVIDER: ${{ steps.route_2.outputs.next_provider }}
+        CLAUDE_FILE: ""
+        CODEX_FILE: ${{ runner.temp }}/factory-codex-output-3.txt
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
+      run: bash "$GITHUB_ACTION_PATH/keep-output.sh"
+
+    - name: Validate review output (attempt 3)
+      id: validate_3
+      if: steps.route_2.outputs.run_next == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PROVIDER: ${{ steps.route_2.outputs.next_provider }}
+        REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
+      run: pnpm exec tsx src/review/action-runner.ts validate
+
+    - name: Route after review attempt 3
+      id: route_3
+      if: steps.route_2.outputs.run_next == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VALID: ${{ steps.validate_3.outputs.valid }}
+        FAILURE_KIND: ${{ steps.validate_3.outputs.failure_kind }}
+        VALIDATION_REFILL_AT: ${{ steps.validate_3.outputs.refill_at }}
+        PROVIDER: ${{ steps.route_2.outputs.next_provider }}
+        MODEL: ${{ steps.route_2.outputs.next_model }}
+        EFFORT: ${{ steps.route_2.outputs.next_effort }}
+        PROVIDER_ATTEMPT: ${{ steps.route_2.outputs.next_provider_attempt }}
+        FALLBACK_USED: ${{ steps.route_2.outputs.next_fallback_used }}
+        REFILL_AT: ${{ steps.route_2.outputs.next_refill_at }}
+      run: pnpm exec tsx src/review/action-runner.ts route
+
+    - name: Review with Codex (attempt 4)
+      id: codex_4
+      if: steps.route_3.outputs.run_next == 'true' && steps.route_3.outputs.next_provider == 'codex'
+      continue-on-error: true
+      uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1.13
+      with:
+        openai-api-key: ${{ inputs.openai-api-key }}
+        prompt: ${{ steps.preflight.outputs.prompt }}
+        output-file: ${{ runner.temp }}/factory-codex-output-4.txt
+        output-schema-file: ${{ steps.preflight.outputs.output_schema_path }}
+        model: ${{ steps.route_3.outputs.next_model }}
+        effort: ${{ steps.route_3.outputs.next_effort }}
+        codex-home: ${{ runner.temp }}/factory-codex-home
+        permission-profile: ":read-only"
+        safety-strategy: drop-sudo
+
+    - name: Keep review output (attempt 4)
+      id: keep_4
+      if: steps.route_3.outputs.run_next == 'true'
+      shell: bash
+      env:
+        PROVIDER: ${{ steps.route_3.outputs.next_provider }}
+        CLAUDE_FILE: ""
+        CODEX_FILE: ${{ runner.temp }}/factory-codex-output-4.txt
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
+      run: bash "$GITHUB_ACTION_PATH/keep-output.sh"
+
+    - name: Validate review output (attempt 4)
+      id: validate_4
+      if: steps.route_3.outputs.run_next == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PROVIDER: ${{ steps.route_3.outputs.next_provider }}
+        REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
+      run: pnpm exec tsx src/review/action-runner.ts validate
+
+    - name: Route after review attempt 4
+      id: route_4
+      if: steps.route_3.outputs.run_next == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VALID: ${{ steps.validate_4.outputs.valid }}
+        FAILURE_KIND: ${{ steps.validate_4.outputs.failure_kind }}
+        VALIDATION_REFILL_AT: ${{ steps.validate_4.outputs.refill_at }}
+        PROVIDER: ${{ steps.route_3.outputs.next_provider }}
+        MODEL: ${{ steps.route_3.outputs.next_model }}
+        EFFORT: ${{ steps.route_3.outputs.next_effort }}
+        PROVIDER_ATTEMPT: ${{ steps.route_3.outputs.next_provider_attempt }}
+        FALLBACK_USED: ${{ steps.route_3.outputs.next_fallback_used }}
+        REFILL_AT: ${{ steps.route_3.outputs.next_refill_at }}
+      run: pnpm exec tsx src/review/action-runner.ts route
 
     - name: Publish the Factory PR Review check
       id: publish
@@ -240,7 +419,8 @@ runs:
         GITHUB_API_URL: ${{ github.api_url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
-        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output-${{ steps.validate_1.outputs.valid == 'true' && '1' || '2' }}
+        REVIEW_OUTPUT_FILE: ${{ runner.temp }}/factory-review-output
+        ATTRIBUTION: ${{ steps.route_4.outputs.attribution || steps.route_3.outputs.attribution || steps.route_2.outputs.attribution || steps.route_1.outputs.attribution }}
       run: pnpm exec tsx src/review/action-runner.ts publish
 
     - name: Fail the pending check after an unfinished review
@@ -253,5 +433,6 @@ runs:
         GITHUB_API_URL: ${{ github.api_url }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         REVIEW_TICKET: ${{ steps.preflight.outputs.ticket }}
+        ATTRIBUTION: ${{ steps.route_4.outputs.attribution || steps.route_3.outputs.attribution || steps.route_2.outputs.attribution || steps.route_1.outputs.attribution }}
         FAILURE_REASON: review job failed or was cancelled before publication
       run: pnpm exec tsx src/review/action-runner.ts fail

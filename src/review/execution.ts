@@ -113,6 +113,11 @@ export interface PublishResult {
   conclusion: CheckRunReport["conclusion"];
 }
 
+export type ReviewAttribution = Omit<
+  CheckRunContext,
+  "ciRunId" | "mode" | "purpose"
+>;
+
 export class ReviewExecutionError extends Error {
   readonly code = "invalid-run";
 
@@ -128,13 +133,19 @@ export function createFactoryReviewExecution(
 ) {
   const { review, sizeLimit } = policy;
 
-  function context(ciRunId: number, purpose: string | null): CheckRunContext {
+  function context(
+    ciRunId: number,
+    purpose: string | null,
+    attribution: ReviewAttribution = {
+      provider: review.provider.id,
+      model: review.provider.model,
+    },
+  ): CheckRunContext {
     return {
       ciRunId,
       mode: review.mode,
-      provider: review.provider.id,
-      model: review.provider.model,
       purpose,
+      ...attribution,
     };
   }
 
@@ -179,10 +190,11 @@ export function createFactoryReviewExecution(
   async function complete(
     ticket: ReviewTicket,
     outcome: ReviewOutcome,
+    attribution?: ReviewAttribution,
   ): Promise<PublishResult> {
     const report = buildCheckRunReport(
       outcome,
-      context(ticket.workflowRunId, ticket.purpose),
+      context(ticket.workflowRunId, ticket.purpose, attribution),
     );
     await github.completeCheckRun(ticket.repository, ticket.checkRunId, report);
     return { outcome: outcome.kind, conclusion: report.conclusion };
@@ -314,13 +326,14 @@ export function createFactoryReviewExecution(
     async publish(input: {
       ticket: ReviewTicket;
       modelOutputJson: string;
+      attribution?: ReviewAttribution;
     }): Promise<PublishResult> {
       const { ticket } = input;
       if (await changedDuringReview(ticket)) {
         return complete(ticket, {
           kind: "technical",
           reason: "pull request changed during review",
-        });
+        }, input.attribution);
       }
       let outcome: ReviewOutcome;
       try {
@@ -328,11 +341,19 @@ export function createFactoryReviewExecution(
       } catch (error: unknown) {
         outcome = { kind: "technical", reason: errorMessage(error) };
       }
-      return complete(ticket, outcome);
+      return complete(ticket, outcome, input.attribution);
     },
 
-    async fail(input: { ticket: ReviewTicket; reason: string }): Promise<void> {
-      await complete(input.ticket, { kind: "technical", reason: input.reason });
+    async fail(input: {
+      ticket: ReviewTicket;
+      reason: string;
+      attribution?: ReviewAttribution;
+    }): Promise<void> {
+      await complete(
+        input.ticket,
+        { kind: "technical", reason: input.reason },
+        input.attribution,
+      );
     },
   };
 }

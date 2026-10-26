@@ -206,6 +206,51 @@ describe("buildCheckRunReport", () => {
     expect(report.summary).toContain("Re-run");
   });
 
+  test("records Codex fallback and Claude refill time in the review summary", () => {
+    const report = buildCheckRunReport(
+      { kind: "clean" },
+      {
+        ...context,
+        provider: "codex",
+        model: "gpt-6.1-sol",
+        effort: "medium",
+        fallback: {
+          primaryProvider: "claude",
+          primaryModel: "claude-opus-5-5",
+          refillAt: "3:00 PM (Africa/Lagos)",
+        },
+      },
+    );
+
+    expect(report.summary).toContain(
+      "Fallback: claude / claude-opus-5-5 reached its usage limit.",
+    );
+    expect(report.summary).toContain(
+      "Claude refill: 3:00 PM (Africa/Lagos). Future reviews will try Claude first.",
+    );
+    expect(report.summary).toContain("Reviewer: codex / gpt-6.1-sol / medium");
+  });
+
+  test("warns when Claude did not report a refill time", () => {
+    const report = buildCheckRunReport(
+      { kind: "clean" },
+      {
+        ...context,
+        provider: "codex",
+        model: "gpt-6.1-sol",
+        effort: "medium",
+        fallback: {
+          primaryProvider: "claude",
+          primaryModel: "claude-opus-5-5",
+        },
+      },
+    );
+
+    expect(report.summary).toContain(
+      "Claude refill: not reported. Future reviews will try Claude first.",
+    );
+  });
+
   test("marks an oversized pull request neutral with its measured limits", () => {
     const report = buildCheckRunReport(
       {

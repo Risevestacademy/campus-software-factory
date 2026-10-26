@@ -11,7 +11,11 @@ interface Workflow {
   concurrency: { group: string; "cancel-in-progress": boolean };
   jobs: Record<
     string,
-    { if?: string; steps: Array<{ uses?: string; run?: string; with?: Record<string, string> }> }
+    {
+      if?: string;
+      "timeout-minutes"?: number;
+      steps: Array<{ uses?: string; run?: string; with?: Record<string, string> }>;
+    }
   >;
 }
 
@@ -50,6 +54,10 @@ describe("factory review caller template", () => {
   test("skips failed or non-PR CI before a runner spends a credential", () => {
     expect(review?.if).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(review?.if).toContain("github.event.workflow_run.event == 'pull_request'");
+  });
+
+  test("allows enough time for two attempts from both providers", () => {
+    expect(review?.["timeout-minutes"]).toBe(30);
   });
 
   test("calls the pinned factory action and never runs pull request code itself", () => {

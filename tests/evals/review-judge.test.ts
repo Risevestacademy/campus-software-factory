@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { judge } from "../../evals/review/judge.js";
+import {
+  findsEveryExpectedDefect,
+  judge,
+} from "../../evals/review/judge.js";
 import type { ExpectedReview } from "../../evals/review/workspace.js";
 import type { ReviewFinding } from "../../src/review/index.js";
 
@@ -70,6 +73,23 @@ describe("judge", () => {
   test("fails a finding outside the seeded defect's lines", () => {
     expect(
       judge(expected, { status: "findings", findings: [{ ...finding, line: 9 }] }).passed,
+    ).toBe(false);
+  });
+});
+
+describe("findsEveryExpectedDefect", () => {
+  test("measures detection completeness independently from severity calibration", () => {
+    expect(
+      findsEveryExpectedDefect(expected, {
+        status: "findings",
+        findings: [{ ...finding, severity: "P2" }],
+      }),
+    ).toBe(true);
+  });
+
+  test("fails completeness when a seeded defect is absent", () => {
+    expect(
+      findsEveryExpectedDefect(expected, { status: "clean", findings: [] }),
     ).toBe(false);
   });
 });

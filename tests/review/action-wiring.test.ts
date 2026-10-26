@@ -20,7 +20,14 @@ const source = await readFile(
 );
 const steps = (parse(source) as { runs: { steps: ActionStep[] } }).runs.steps;
 
-const providerSteps = ["claude_1", "codex_1", "claude_2", "codex_2"];
+const providerSteps = [
+  "claude_1",
+  "codex_1",
+  "claude_2",
+  "codex_2",
+  "codex_3",
+  "codex_4",
+];
 const claudeSecret = "inputs.claude-code-oauth-token";
 const codexSecret = "inputs.openai-api-key";
 
@@ -39,7 +46,7 @@ function text(value: ActionStep): string {
 }
 
 describe("Factory PR Review composite action wiring", () => {
-  test("runs preflight, checkouts, provider, validation, retry, publish, then the failure guard", () => {
+  test("runs preflight, four routed attempt slots, publish, then the failure guard", () => {
     const order = [
       "preflight",
       "checkout_pr",
@@ -49,9 +56,20 @@ describe("Factory PR Review composite action wiring", () => {
       "codex_1",
       "keep_1",
       "validate_1",
+      "route_1",
       "claude_2",
       "codex_2",
       "keep_2",
+      "validate_2",
+      "route_2",
+      "codex_3",
+      "keep_3",
+      "validate_3",
+      "route_3",
+      "codex_4",
+      "keep_4",
+      "validate_4",
+      "route_4",
       "publish",
       "fail",
     ].map(indexOf);
@@ -64,7 +82,7 @@ describe("Factory PR Review composite action wiring", () => {
       expect(text(step(id))).toContain(claudeSecret);
       expect(text(step(id))).not.toContain(codexSecret);
     }
-    for (const id of ["codex_1", "codex_2"]) {
+    for (const id of ["codex_1", "codex_2", "codex_3", "codex_4"]) {
       expect(text(step(id))).toContain(codexSecret);
       expect(text(step(id))).not.toContain(claudeSecret);
     }
@@ -87,27 +105,31 @@ describe("Factory PR Review composite action wiring", () => {
     expect(step("bubblewrap")["continue-on-error"]).toBeUndefined();
   });
 
-  test("gates each provider step on the policy-selected provider", () => {
-    for (const id of ["claude_1", "claude_2"]) {
-      expect(step(id).if).toContain("steps.preflight.outputs.provider == 'claude'");
-    }
-    for (const id of ["codex_1", "codex_2"]) {
-      expect(step(id).if).toContain("steps.preflight.outputs.provider == 'codex'");
-    }
-  });
-
-  test("retries only after invalid first output", () => {
+  test("gates every later provider slot on the router output", () => {
+    expect(step("claude_1").if).toContain("steps.preflight.outputs.provider == 'claude'");
+    expect(step("codex_1").if).toContain("steps.preflight.outputs.provider == 'codex'");
     for (const id of ["claude_2", "codex_2"]) {
-      expect(step(id).if).toContain("steps.validate_1.outputs.valid != 'true'");
-    }
-  });
-
-  test("passes the preflight turn budget to every Claude attempt", () => {
-    for (const id of ["claude_1", "claude_2"]) {
-      expect(step(id).with?.claude_args).toContain(
-        "--max-turns ${{ steps.preflight.outputs.max_turns }}",
+      expect(step(id).if).toContain("steps.route_1.outputs.run_next == 'true'");
+      expect(step(id).if).toContain(
+        `steps.route_1.outputs.next_provider == '${id.startsWith("claude") ? "claude" : "codex"}'`,
       );
     }
+    for (const [id, route] of [
+      ["codex_3", "route_2"],
+      ["codex_4", "route_3"],
+    ] as const) {
+      expect(step(id).if).toContain(`steps.${route}.outputs.run_next == 'true'`);
+      expect(step(id).if).toContain(`steps.${route}.outputs.next_provider == 'codex'`);
+    }
+  });
+
+  test("passes the turn budget to every Claude attempt", () => {
+    expect(step("claude_1").with?.claude_args).toContain(
+      "--max-turns ${{ steps.preflight.outputs.max_turns }}",
+    );
+    expect(step("claude_2").with?.claude_args).toContain(
+      "--max-turns ${{ steps.preflight.outputs.max_turns }}",
+    );
   });
 
   test("never passes model output through an environment variable or input", () => {
@@ -117,37 +139,55 @@ describe("Factory PR Review composite action wiring", () => {
     }
   });
 
-  test("writes each Codex attempt to its own output file", () => {
-    expect(step("codex_1").with?.["output-file"]).toBe(
-      "${{ runner.temp }}/factory-codex-output-1.txt",
-    );
-    expect(step("codex_2").with?.["output-file"]).toBe(
-      "${{ runner.temp }}/factory-codex-output-2.txt",
-    );
-    expect(step("keep_1").env?.CODEX_FILE).toBe(step("codex_1").with?.["output-file"]);
-    expect(step("keep_2").env?.CODEX_FILE).toBe(step("codex_2").with?.["output-file"]);
-  });
-
-  test("keeps each attempt's output from that attempt's own steps", () => {
-    for (const attempt of ["1", "2"]) {
-      const keep = step(`keep_${attempt}`);
-      expect(keep.run).toBe('bash "$GITHUB_ACTION_PATH/keep-output.sh"');
-      expect(keep.env?.CLAUDE_FILE).toBe(
-        `\${{ steps.claude_${attempt}.outputs.execution_file }}`,
+  test("pins Codex effort and gives every slot its own provider output file", () => {
+    for (const attempt of ["1", "2", "3", "4"]) {
+      expect(step(`codex_${attempt}`).with?.["output-file"]).toBe(
+        `\${{ runner.temp }}/factory-codex-output-${attempt}.txt`,
       );
-      expect(keep.env?.REVIEW_OUTPUT_FILE).toBe(
-        `\${{ runner.temp }}/factory-review-output-${attempt}`,
+      expect(step(`keep_${attempt}`).env?.CODEX_FILE).toBe(
+        step(`codex_${attempt}`).with?.["output-file"],
       );
     }
-    expect(step("keep_2").if).toContain("steps.validate_1.outputs.valid != 'true'");
+    expect(step("codex_1").with?.effort).toBe("${{ steps.preflight.outputs.effort }}");
+    expect(step("codex_2").with?.effort).toBe("${{ steps.route_1.outputs.next_effort }}");
+    expect(step("codex_3").with?.effort).toBe("${{ steps.route_2.outputs.next_effort }}");
+    expect(step("codex_4").with?.effort).toBe("${{ steps.route_3.outputs.next_effort }}");
   });
 
-  test("validates attempt 1 and publishes the attempt that was validated", () => {
-    expect(step("validate_1").env?.REVIEW_OUTPUT_FILE).toBe(
-      "${{ runner.temp }}/factory-review-output-1",
+  test("keeps every attempted slot in one shared output file", () => {
+    for (const attempt of ["1", "2", "3", "4"]) {
+      const keep = step(`keep_${attempt}`);
+      expect(keep.run).toBe('bash "$GITHUB_ACTION_PATH/keep-output.sh"');
+      expect(keep.env?.REVIEW_OUTPUT_FILE).toBe(
+        "${{ runner.temp }}/factory-review-output",
+      );
+    }
+    expect(step("keep_1").env?.CLAUDE_FILE).toBe(
+      "${{ steps.claude_1.outputs.execution_file }}",
     );
+    expect(step("keep_2").env?.CLAUDE_FILE).toBe(
+      "${{ steps.claude_2.outputs.execution_file }}",
+    );
+    expect(step("keep_3").env?.CLAUDE_FILE).toBe("");
+    expect(step("keep_4").env?.CLAUDE_FILE).toBe("");
+  });
+
+  test("validates and routes every slot before publishing its attribution", () => {
+    for (const attempt of ["1", "2", "3", "4"]) {
+      expect(step(`validate_${attempt}`).env?.REVIEW_OUTPUT_FILE).toBe(
+        "${{ runner.temp }}/factory-review-output",
+      );
+      expect(step(`validate_${attempt}`).run).toContain("action-runner.ts validate");
+      expect(step(`route_${attempt}`).run).toContain("action-runner.ts route");
+    }
     expect(step("publish").env?.REVIEW_OUTPUT_FILE).toBe(
-      "${{ runner.temp }}/factory-review-output-${{ steps.validate_1.outputs.valid == 'true' && '1' || '2' }}",
+      "${{ runner.temp }}/factory-review-output",
+    );
+    expect(step("publish").env?.ATTRIBUTION).toContain(
+      "steps.route_4.outputs.attribution",
+    );
+    expect(step("publish").env?.ATTRIBUTION).toContain(
+      "steps.route_1.outputs.attribution",
     );
   });
 
@@ -174,7 +214,7 @@ describe("Factory PR Review composite action wiring", () => {
   });
 
   test("runs Codex read-only without sudo", () => {
-    for (const id of ["codex_1", "codex_2"]) {
+    for (const id of ["codex_1", "codex_2", "codex_3", "codex_4"]) {
       expect(step(id).with?.["permission-profile"]).toBe(":read-only");
       expect(step(id).with?.["safety-strategy"]).toBe("drop-sudo");
     }

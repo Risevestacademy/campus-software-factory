@@ -332,6 +332,33 @@ describe("FactoryReviewExecution.publish", () => {
     ]);
   });
 
+  test("publishes fallback attribution from the actual reviewer", async () => {
+    const github = createGitHub();
+    const ticket = await readyTicket(github);
+
+    await execution(github).publish({
+      ticket,
+      modelOutputJson: cleanOutput,
+      attribution: {
+        provider: "codex",
+        model: "gpt-6.1-sol",
+        effort: "medium",
+        fallback: {
+          primaryProvider: "claude",
+          primaryModel: "claude-opus-5-5",
+          refillAt: "3:00 PM (Africa/Lagos)",
+        },
+      },
+    });
+
+    expect(github.completed[0]?.report.summary).toContain(
+      "Reviewer: codex / gpt-6.1-sol / medium",
+    );
+    expect(github.completed[0]?.report.summary).toContain(
+      "Claude refill: 3:00 PM (Africa/Lagos). Future reviews will try Claude first.",
+    );
+  });
+
   test("completes the pending check as failure with an annotation per finding", async () => {
     const github = createGitHub();
     const ticket = await readyTicket(github);

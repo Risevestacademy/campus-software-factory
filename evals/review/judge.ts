@@ -19,14 +19,19 @@ export function judge(expected: ExpectedReview, result: ReviewResult): Judgement
     : { passed: false, detail: misses.map((miss) => miss.detail).join("; ") };
 }
 
+export function findsEveryExpectedDefect(
+  expected: ExpectedReview,
+  result: ReviewResult,
+): boolean {
+  return (
+    expected.status === "clean" ||
+    expected.defects.every((defect) => findingsAt(defect, result).length > 0)
+  );
+}
+
 function judgeDefect(defect: SeededDefect, result: ReviewResult): Judgement {
   const location = `${defect.path}:${defect.lines.join("-")}`;
-  const located = result.findings.filter(
-    (finding) =>
-      finding.path === defect.path &&
-      finding.line >= defect.lines[0] &&
-      finding.line <= defect.lines[1],
-  );
+  const located = findingsAt(defect, result);
   const [firstLocated] = located;
   if (firstLocated === undefined) {
     return { passed: false, detail: `missed ${location}; got ${summarize(result)}` };
@@ -40,6 +45,15 @@ function judgeDefect(defect: SeededDefect, result: ReviewResult): Judgement {
         passed: false,
         detail: `found ${firstLocated.path}:${firstLocated.line} but severity ${firstLocated.severity} is below ${defect.severity}`,
       };
+}
+
+function findingsAt(defect: SeededDefect, result: ReviewResult) {
+  return result.findings.filter(
+    (finding) =>
+      finding.path === defect.path &&
+      finding.line >= defect.lines[0] &&
+      finding.line <= defect.lines[1],
+  );
 }
 
 function summarize(result: ReviewResult): string {

@@ -71,4 +71,17 @@ describe("renderReviewPrompt", () => {
 
     expect(prompt.match(/<\/pr-purpose>/g)).toHaveLength(1);
   });
+
+  test("defines severity by user impact so providers apply one scale", () => {
+    const prompt = renderReviewPrompt(ticket);
+
+    expect(prompt).toContain(
+      "P1: a defect that breaks a core stated outcome for ordinary valid input",
+    );
+    expect(prompt).toContain("an omitted multiplicative factor or wrong arithmetic sign");
+    expect(prompt).toContain(
+      "P2: a merge-blocking but bounded defect limited to an edge boundary",
+    );
+    expect(prompt).toContain("Judge severity from the failure scenario's impact");
+  });
 });

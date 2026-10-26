@@ -4,7 +4,7 @@ import {
   type ProviderId,
   type ReviewFinding,
 } from "./contracts.ts";
-import type { ReviewMode } from "./provider-policy.ts";
+import type { ReviewMode, ReviewReasoningEffort } from "./provider-policy.ts";
 
 export const checkRunName = "Factory PR Review";
 
@@ -29,7 +29,13 @@ export interface CheckRunContext {
   mode: ReviewMode;
   provider: ProviderId;
   model: string;
+  effort?: ReviewReasoningEffort;
   purpose: string | null;
+  fallback?: {
+    primaryProvider: ProviderId;
+    primaryModel: string;
+    refillAt?: string;
+  };
 }
 
 export interface CheckAnnotation {
@@ -172,12 +178,20 @@ function footer(context: CheckRunContext): string {
     context.mode === "enforced"
       ? "Enforced: required before merge into dev and main."
       : "Advisory canary: this check does not block merge yet.";
-  return [
-    "---",
-    modeLine,
-    `Reviewer: ${context.provider} / ${context.model}`,
+  const lines = ["---", modeLine];
+  if (context.fallback !== undefined) {
+    lines.push(
+      `Fallback: ${context.fallback.primaryProvider} / ${context.fallback.primaryModel} reached its usage limit.`,
+      context.fallback.refillAt === undefined
+        ? "Claude refill: not reported. Future reviews will try Claude first."
+        : `Claude refill: ${context.fallback.refillAt}. Future reviews will try Claude first.`,
+    );
+  }
+  lines.push(
+    `Reviewer: ${[context.provider, context.model, context.effort].filter(Boolean).join(" / ")}`,
     `CI run: ${context.ciRunId}`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 function bySeverity(findings: readonly ReviewFinding[]): ReviewFinding[] {

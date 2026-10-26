@@ -10,8 +10,8 @@ does not run the Campus product or deploy production releases.
 ## Current state
 
 The deterministic policy, baseline/current metrics, full ruleset drift, and the
-provider-neutral review gate are implemented. Every product is `disabled` in
-`policies/pr-review.yaml` until its rollout starts. External inputs are validated
+provider-neutral review gate are implemented. Campus Web is in advisory rollout;
+Campus Server and Campus Mobile remain `disabled`. External inputs are validated
 against strict schemas. The product registry and live `CODEOWNERS` entry intentionally
 remain inactive until a read-only audit confirms the real GitHub organization,
 repositories, team slugs, scripts, runtimes, contracts, and deployment
@@ -30,7 +30,7 @@ pnpm metrics:report path/to/metrics-input.json
 pnpm drift:check policies/rulesets/expected.json path/to/actual-rulesets.json
 pnpm drift:review-gate    # needs FACTORY_AUDIT_TOKEN
 pnpm review:evaluate <repository-id> --credential-incidents 0 --unsafe-reviews 0 --human-approval-intact
-pnpm review:eval          # paid: runs the review prompt through local Claude Code
+pnpm review:eval          # paid: evaluates every policy-pinned Claude and Codex configuration
 ```
 
 ## Adoption contract
@@ -74,7 +74,8 @@ may exist, and the pull request should be split.
 | No change required | `success` |
 | Findings with confidence of at least 0.9 (up to 50) | `failure`, one annotation per finding |
 | Missing `## Change and measurable outcome` | `failure`; fix the description and re-run |
-| Reviewer error or invalid output after one retry | `failure` (technical); re-run allowed |
+| Reviewer error or invalid output after that provider's second attempt | `failure` (technical); re-run allowed |
+| Claude reports subscription usage exhaustion | Review continues with configured Codex fallback; summary records actual reviewer and Claude refill time |
 | More than 400 changed lines or 15 changed files, excluding configured lockfiles | `neutral`; human review only, no provider usage |
 | Fork pull request | `neutral`; human review only, no credentials used |
 | Draft, or CI not green | no check yet; the required check stays pending |
@@ -91,26 +92,34 @@ lockfiles and measures changed lines and files. Oversized pull requests receive
 a completed neutral check and never start an AI review. The
 `factory-pr-review` action reads policy from the pinned factory commit, checks
 out the head as untrusted evidence in `pr/` and the
-target branch's guidance in `trusted/`, and runs the one provider pinned for
-that repository in `policies/pr-review.yaml`: Claude or Codex, never a
-fallback. Output is validated deterministically; a finding can block only if
+target branch's guidance in `trusted/`, and runs the primary provider pinned for
+that repository in `policies/pr-review.yaml`. Output is validated deterministically;
+a finding can block only if
 it points at a line the pull request changed. Claude runs with subprocess
 environment scrubbing, which needs bubblewrap, so when Claude is the provider
 the action installs it. If the runner image still blocks bwrap's user
 namespaces, the action relaxes `kernel.apparmor_restrict_unprivileged_userns`
 on that disposable runner and logs a warning.
 
-Claude is the initial provider for every repository. Codex calls the hosted
-OpenAI API, which the factory allows as an exception AJ approved on
-2026-10-25; no repository pins it yet.
+Claude is the primary provider for Campus Web. Only a positively identified
+Claude subscription usage-limit error routes that review to the pinned
+`codex/gpt-6.1-sol` fallback at `medium` effort. Each provider gets at most two
+attempts. Authentication, outage, timeout, transient throttling, and malformed
+output remain technical failures; they never activate fallback. Every new
+workflow tries Claude first. No cooldown survives between workflows.
+
+Codex calls the hosted OpenAI API, which the factory allows as an exception AJ
+approved on 2026-10-25. A fallback check names Codex as the actual reviewer,
+names the primary Claude model, and records Claude's reported refill time. If
+Claude reports no refill time, the check says so and still runs Codex.
 
 ### When the reviewer is unavailable
 
-A provider outage or exhausted usage limit fails the check as technical, so
-the pull request stays blocked and a same-SHA re-run is allowed. Re-run the
-review once the limit resets. An urgent merge uses the owner-team bypass.
-Switching provider is a factory policy commit plus a pinned-SHA bump in the
-caller, and it starts a new advisory canary, so it is not an outage fix.
+A provider outage, authentication failure, timeout, transient throttle, or
+invalid output after the bounded retries fails the check as technical. A
+same-SHA re-run is allowed. Claude usage exhaustion falls back only when the
+pinned Claude action exposes a recognized quota message. Unknown quota shapes
+fail closed as technical errors. An urgent merge uses the owner-team bypass.
 
 ### Credentials
 
@@ -118,7 +127,9 @@ Provider credentials are the Actions secrets `CLAUDE_CODE_OAUTH_TOKEN` and
 `OPENAI_API_KEY`, set on each product repository or as organization secrets
 scoped to it. The caller template passes exactly these names, so
 `pnpm policy:validate` rejects any other `credential.secret`. Personal
-credentials need `owner`, `expiresOn`, and `rotateBy` in policy. An expired
+credentials need `owner`, `expiresOn`, and `rotateBy` in policy. Campus Web's
+Claude and OpenAI credentials are owned by `AJ1732`, expire on `2027-10-25`,
+and rotate by `2027-09-25`. An expired
 credential fails `pnpm policy:validate` and stops new reviews, which keeps the
 required check pending.
 
@@ -127,7 +138,7 @@ required check pending.
 1. Create the owner team from `policies/repo-registry.yaml`, point CODEOWNERS
    at it, and create the `factory-review:valid` and
    `factory-review:false-positive` labels.
-2. Make the provider's secret available to the repository. Product repos are
+2. Make the primary and configured fallback secrets available to the repository. Product repos are
    public, so this factory repo must be public for them to call its action.
 3. Set `mode: advisory` with `canaryStartsAt`, `canaryProvider` equal to
    `provider`, and credential metadata. Merge it to factory `main`.
@@ -143,9 +154,10 @@ required check pending.
 8. Product CODEOWNERS approve `mode: enforced`, and the `factory-quality`
    ruleset requires `Factory PR Review` on `dev`, then on `main`.
 
-A provider, model, rubric, or major action change returns that repository to
-advisory and starts a new canary. `pnpm policy:validate` enforces the provider
-and model half: it rejects a `provider` that differs from `canaryProvider`.
+A primary or fallback provider, model, effort, rubric, or major action change
+returns that repository to advisory and starts a new canary.
+`pnpm policy:validate` rejects either configured provider when it differs from
+its recorded canary configuration.
 
 GitHub treats a neutral required check as passing. In enforced mode, oversized
 pull requests therefore rely on CODEOWNER approval and the repository's human
