@@ -12,10 +12,10 @@ does not run the Campus product or deploy production releases.
 The deterministic policy, baseline/current metrics, full ruleset drift, and the
 provider-neutral review gate are implemented. Campus Web is in advisory rollout;
 Campus Server and Campus Mobile remain `disabled`. External inputs are validated
-against strict schemas. The product registry and live `CODEOWNERS` entry intentionally
-remain inactive until a read-only audit confirms the real GitHub organization,
-repositories, team slugs, scripts, runtimes, contracts, and deployment
-configuration.
+against strict schemas. Factory `main` is protected by
+[`policies/rulesets/factory-main.json`](policies/rulesets/factory-main.json);
+every change lands through a pull request with a green `quality-gate` and a
+`@Risevestacademy/campus` approval, or a recorded team bypass.
 
 ## Local commands
 

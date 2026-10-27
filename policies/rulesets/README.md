@@ -38,6 +38,15 @@ team's bypass, so drift flags any other bypass actor.
 The weekly drift audit runs it after `drift:check` and reports both in the
 same issue.
 
+## Factory repository
+
+`factory-main.json` is the request body for this repository's own `main`
+ruleset (`gh api -X POST repos/Risevestacademy/campus-software-factory/rulesets
+--input policies/rulesets/factory-main.json`). It follows the same owner-team
+`pull_request` bypass model. `tests/policy/factory-governance.test.ts` keeps its
+required check aligned with the self-check job name, because a mismatch would
+block every merge.
+
 Known residual: `Factory PR Review` and any other check created with a
 workflow `GITHUB_TOKEN` share the `github-actions` app, so a ruleset cannot
 pin the check to the factory. A pull request that adds a workflow posting a
