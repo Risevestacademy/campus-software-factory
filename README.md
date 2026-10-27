@@ -10,8 +10,8 @@ does not run the Campus product or deploy production releases.
 ## Current state
 
 The deterministic policy, baseline/current metrics, full ruleset drift, and the
-provider-neutral review gate are implemented. Campus Web is in advisory rollout;
-Campus Server and Campus Mobile remain `disabled`. External inputs are validated
+provider-neutral review gate are implemented. Campus Web and Campus Mobile are in
+advisory rollout; Campus Server remains `disabled`. External inputs are validated
 against strict schemas. Factory `main` is protected by
 [`policies/rulesets/factory-main.json`](policies/rulesets/factory-main.json);
 every change lands through a pull request with a green `quality-gate` and a
