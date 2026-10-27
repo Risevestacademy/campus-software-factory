@@ -31,6 +31,17 @@ Review on two separate axes:
 1. Standards: violations of the trusted repository standards.
 2. Spec: defects that prevent the stated purpose or acceptance outcome.
 
+Use this severity scale for both axes:
+- P0: an exploitable security failure, irreversible data loss or corruption, or
+  a total outage of a critical service.
+- P1: a defect that breaks a core stated outcome for ordinary valid input or
+  produces materially wrong persisted or user-visible results. Examples include
+  an omitted multiplicative factor or wrong arithmetic sign, and a reversed
+  required condition.
+- P2: a merge-blocking but bounded defect limited to an edge boundary,
+  secondary behavior, or presentation formatting while the core outcome works.
+Judge severity from the failure scenario's impact, not the size of the fix.
+
 Report every defect with confidence of at least ${minimumConfidence}. If more
 than ${maxItems} exist, report the ${maxItems} most severe. Every finding must
 name a path changed by this pull request and a line inside one of
