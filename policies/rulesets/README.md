@@ -1,18 +1,34 @@
 # Expected GitHub rulesets
 
-`expected.json` remains empty until the read-only product-repository and
-organization audit is complete. Do not guess repository names, team slugs, or
-GitHub plan capabilities.
+`expected.json` is the live snapshot of every `policies/repo-registry.yaml`
+repository's `factory-*` rulesets. A repository with none is listed with
+`rulesets: []`, because the collector reports every registry repository.
+Regenerate it after an intended ruleset change instead of editing it by hand:
 
-For each audited repository, record two independently layered rulesets:
+```bash
+FACTORY_AUDIT_TOKEN="$(gh auth token)" pnpm --silent drift:collect \
+  | jq '{"$schema": "../schema/ruleset-snapshot.schema.json"} + .' \
+  > policies/rulesets/expected.json
+```
 
-- `factory-merge-actor` restricts updates to the default branch. Only the
-  owning Code Owner team receives `pull_request` bypass for this ruleset.
+Each product repository carries one factory ruleset:
+
 - `factory-quality` targets `refs/heads/dev` and `refs/heads/main`. It
   requires a pull request, latest-change approval, conversation resolution,
-  specialist review where applicable, and the stable `quality-gate`. Once the
-  repository's review mode is `enforced` in `policies/pr-review.yaml`, it also
-  requires the `Factory PR Review` check.
+  specialist review where applicable, and the repository's stable CI check.
+  Once the repository's review mode is `enforced` in
+  `policies/pr-review.yaml`, it also requires the `Factory PR Review` check.
+  It replaces any earlier hand-made branch rulesets, which drift cannot see.
+
+| Repository | Ruleset | Request body | Stable CI check |
+| --- | --- | --- | --- |
+| campus-web | `factory-quality` | `campus-web-factory-quality.json` | `build` |
+| campus-server | none yet | | |
+| campus-mobile | none yet | | |
+
+`factory-merge-actor`, which would let only the owner team merge into the
+default branch, is not adopted in V1. With a two-person owner team it would
+recreate the single-reviewer bottleneck the factory exists to remove.
 
 ## Factory PR Review bypass
 

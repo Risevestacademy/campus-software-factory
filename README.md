@@ -15,7 +15,9 @@ Campus Server and Campus Mobile remain `disabled`. External inputs are validated
 against strict schemas. Factory `main` is protected by
 [`policies/rulesets/factory-main.json`](policies/rulesets/factory-main.json);
 every change lands through a pull request with a green `quality-gate` and a
-`@Risevestacademy/campus` approval, or a recorded team bypass.
+`@Risevestacademy/campus` approval, or a recorded team bypass. Campus Web
+`dev` and `main` are governed by its `factory-quality` ruleset, which the
+weekly drift audit compares against `policies/rulesets/expected.json`.
 
 ## Local commands
 
