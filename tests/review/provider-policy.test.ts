@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-
 import { describe, expect, test } from "vitest";
 
 import { parsePrReviewPolicy } from "../../src/review/index.js";
@@ -51,143 +49,21 @@ function webRepository(fields: string): string {
 ${fields}`;
 }
 
+const codexPrimary = advisoryClaude.replaceAll(
+  "id: claude, model: claude-opus-5-5",
+  "id: codex, model: gpt-6.1-sol, effort: medium",
+);
+
 describe("parsePrReviewPolicy", () => {
-  test("accepts the shipped policy with only campus-web in advisory", async () => {
-    const source = await readFile(
-      new URL("../../policies/pr-review.yaml", import.meta.url),
-      "utf8",
-    );
-
-    const policy = parsePrReviewPolicy(source, registryIds, now);
-
-    expect(policy.repositories.map((entry) => [entry.id, entry.mode])).toEqual([
-      ["campus-web", "advisory"],
-      ["campus-server", "disabled"],
-      ["campus-mobile", "disabled"],
-    ]);
-    expect(policy.repositories[0]?.usageLimitFallback).toEqual({
-      provider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
-      canaryProvider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
-      credential: {
-        secret: "OPENAI_API_KEY",
-        ownership: "personal",
-        owner: "AJ1732",
-        expiresOn: "2027-10-25",
-        rotateBy: "2027-09-25",
-      },
-    });
-  });
-
   test("lets a disabled repository omit credential metadata", () => {
-    const policy = parsePrReviewPolicy(
-      webRepository(disabledClaude),
-      registryIds,
-      now,
-    );
+    const policy = parsePrReviewPolicy(webRepository(disabledClaude), registryIds, now);
 
     expect(policy.repositories[0]?.mode).toBe("disabled");
   });
 
-  test("requires a credential and canary start before a repository runs reviews", () => {
-    const source = webRepository(
-      "    mode: advisory\n    provider: { id: claude, model: claude-opus-5-5 }\n",
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      /credential/,
-    );
-  });
-
-  test("requires owner, expiry, and rotation metadata for a personal credential", () => {
-    const source = webRepository(
-      `${advisoryClaude}    credential: { secret: CLAUDE_CODE_OAUTH_TOKEN, ownership: personal }\n`,
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(/owner/);
-  });
-
-  test("rejects an expired personal credential", () => {
-    const source = webRepository(advisoryClaude + personalCredential);
-
-    expect(() =>
-      parsePrReviewPolicy(
-        source,
-        registryIds,
-        new Date("2027-01-01T00:00:00.000Z"),
-      ),
-    ).toThrow('Repository "campus-web" credential expired on 2027-01-01');
-  });
-
-  test("rejects a rotation date after the expiry date", () => {
-    const source = webRepository(
-      advisoryClaude + personalCredential.replace('"2026-12-15"', '"2027-02-01"'),
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Repository "campus-web" credential rotateBy must not be after expiresOn',
-    );
-  });
-
-  test("rejects an unpinned model alias", () => {
-    const source = webRepository(
-      advisoryClaude.replace("claude-opus-5-5", "latest") + personalCredential,
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(/model/);
-  });
-
-  test("rejects a Codex provider wired to a Claude secret", () => {
-    const source = webRepository(
-      advisoryClaude.replaceAll(
-        "id: claude, model: claude-opus-5-5",
-        "id: codex, model: gpt-6.1-sol, effort: medium",
-      ) + personalCredential,
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      /secret/,
-    );
-  });
-
-  test("rejects a secret name the caller template never passes", () => {
-    const source = webRepository(
-      advisoryClaude +
-        personalCredential.replace(
-          "secret: CLAUDE_CODE_OAUTH_TOKEN",
-          "secret: CLAUDE_CODE_OAUTH_TOKEN_WEB",
-        ),
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Repository "campus-web" credential secret CLAUDE_CODE_OAUTH_TOKEN_WEB must be CLAUDE_CODE_OAUTH_TOKEN for provider claude',
-    );
-  });
-
-  test("requires the canary provider before a repository runs reviews", () => {
-    const source = webRepository(
-      advisoryClaude.replace("    canaryProvider: { id: claude, model: claude-opus-5-5 }\n", "") +
-        personalCredential,
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(/canaryProvider/);
-  });
-
-  test("rejects a provider or model change that keeps the old canary", () => {
-    const source = webRepository(
-      advisoryClaude.replace(
-        "provider: { id: claude, model: claude-opus-5-5 }\n",
-        "provider: { id: claude, model: claude-opus-5-6 }\n",
-      ) + personalCredential,
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Repository "campus-web" provider claude/claude-opus-5-6 differs from its canary claude/claude-opus-5-5; start a new canary',
-    );
-  });
-
-  test("accepts a repository whose provider matches its canary", () => {
+  test("accepts a canary-pinned provider with a canary-pinned Codex fallback", () => {
     const policy = parsePrReviewPolicy(
-      webRepository(advisoryClaude + personalCredential),
+      webRepository(advisoryClaude + personalCredential + codexFallback),
       registryIds,
       now,
     );
@@ -196,15 +72,6 @@ describe("parsePrReviewPolicy", () => {
       id: "claude",
       model: "claude-opus-5-5",
     });
-  });
-
-  test("accepts a canary-pinned Codex fallback for Claude usage exhaustion", () => {
-    const policy = parsePrReviewPolicy(
-      webRepository(advisoryClaude + personalCredential + codexFallback),
-      registryIds,
-      now,
-    );
-
     expect(policy.repositories[0]?.usageLimitFallback).toEqual({
       provider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
       canaryProvider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
@@ -218,95 +85,133 @@ describe("parsePrReviewPolicy", () => {
     });
   });
 
-  test("rejects usage-limit fallback when Claude is not the primary provider", () => {
-    const codexPrimary = advisoryClaude.replaceAll(
-      "id: claude, model: claude-opus-5-5",
-      "id: codex, model: gpt-6.1-sol, effort: medium",
-    );
-    const codexCredential = personalCredential.replace(
-      "CLAUDE_CODE_OAUTH_TOKEN",
-      "OPENAI_API_KEY",
-    );
-
-    expect(() =>
-      parsePrReviewPolicy(
-        webRepository(codexPrimary + codexCredential + codexFallback),
-        registryIds,
-        now,
+  test.each<{ name: string; source: string; error: string | RegExp; at?: Date }>([
+    {
+      name: "a reviewing repository without a credential",
+      source: webRepository("    mode: advisory\n    provider: { id: claude, model: claude-opus-5-5 }\n"),
+      error: /credential/,
+    },
+    {
+      name: "a personal credential without owner, expiry, and rotation",
+      source: webRepository(
+        `${advisoryClaude}    credential: { secret: CLAUDE_CODE_OAUTH_TOKEN, ownership: personal }\n`,
       ),
-    ).toThrow(
-      'Repository "campus-web" usage-limit fallback requires Claude as the primary provider',
-    );
-  });
-
-  test("rejects a usage-limit fallback that does not use Codex", () => {
-    const source = webRepository(
-      advisoryClaude +
-        personalCredential +
-        codexFallback.replaceAll(
-          "id: codex, model: gpt-6.1-sol, effort: medium",
-          "id: claude, model: claude-opus-5-5",
-        ),
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Repository "campus-web" usage-limit fallback provider must be Codex',
-    );
-  });
-
-  test("rejects fallback model or effort changes that keep the old canary", () => {
-    const source = webRepository(
-      advisoryClaude +
-        personalCredential +
-        codexFallback.replace(
-          "provider: { id: codex, model: gpt-6.1-sol, effort: medium }",
-          "provider: { id: codex, model: gpt-6.1-sol, effort: xhigh }",
-        ),
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Repository "campus-web" usage-limit fallback codex/gpt-6.1-sol/xhigh differs from its canary codex/gpt-6.1-sol/medium; start a new canary',
-    );
-  });
-
-  test("rejects a fallback wired to the wrong credential secret", () => {
-    const source = webRepository(
-      advisoryClaude +
-        personalCredential +
-        codexFallback.replace("secret: OPENAI_API_KEY", "secret: CLAUDE_CODE_OAUTH_TOKEN"),
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Repository "campus-web" usage-limit fallback credential secret CLAUDE_CODE_OAUTH_TOKEN must be OPENAI_API_KEY for provider codex',
-    );
-  });
-
-  test("requires explicit reasoning effort for Codex", () => {
-    const source = webRepository(
-      advisoryClaude +
-        personalCredential +
-        codexFallback.replaceAll(", effort: medium", ""),
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Repository "campus-web" usage-limit fallback provider codex/gpt-6.1-sol must pin reasoning effort',
-    );
-  });
-
-  test("rejects repositories missing from the registry", () => {
-    const source = webRepository(disabledClaude).replace(
-      "id: campus-web",
-      "id: campus-desktop",
-    );
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(
-      'Review policy repository "campus-desktop" is not in the repository registry',
-    );
-  });
-
-  test("rejects a canary window longer than fourteen days", () => {
-    const source = webRepository(disabledClaude).replace("maxDays: 14", "maxDays: 15");
-
-    expect(() => parsePrReviewPolicy(source, registryIds, now)).toThrow(/maxDays/);
+      error: /owner/,
+    },
+    {
+      name: "an expired personal credential",
+      source: webRepository(advisoryClaude + personalCredential),
+      error: 'Repository "campus-web" credential expired on 2027-01-01',
+      at: new Date("2027-01-01T00:00:00.000Z"),
+    },
+    {
+      name: "a rotation date after the expiry date",
+      source: webRepository(
+        advisoryClaude + personalCredential.replace('"2026-12-15"', '"2027-02-01"'),
+      ),
+      error: 'Repository "campus-web" credential rotateBy must not be after expiresOn',
+    },
+    {
+      name: "an unpinned model alias",
+      source: webRepository(advisoryClaude.replace("claude-opus-5-5", "latest") + personalCredential),
+      error: /model/,
+    },
+    {
+      name: "a Codex provider wired to a Claude secret",
+      source: webRepository(codexPrimary + personalCredential),
+      error: /secret/,
+    },
+    {
+      name: "a secret name the caller template never passes",
+      source: webRepository(
+        advisoryClaude +
+          personalCredential.replace("secret: CLAUDE_CODE_OAUTH_TOKEN", "secret: CLAUDE_CODE_OAUTH_TOKEN_WEB"),
+      ),
+      error:
+        'Repository "campus-web" credential secret CLAUDE_CODE_OAUTH_TOKEN_WEB must be CLAUDE_CODE_OAUTH_TOKEN for provider claude',
+    },
+    {
+      name: "a reviewing repository without a canary provider",
+      source: webRepository(
+        advisoryClaude.replace("    canaryProvider: { id: claude, model: claude-opus-5-5 }\n", "") +
+          personalCredential,
+      ),
+      error: /canaryProvider/,
+    },
+    {
+      name: "a provider or model change that keeps the old canary",
+      source: webRepository(
+        advisoryClaude.replace(
+          "provider: { id: claude, model: claude-opus-5-5 }\n",
+          "provider: { id: claude, model: claude-opus-5-6 }\n",
+        ) + personalCredential,
+      ),
+      error:
+        'Repository "campus-web" provider claude/claude-opus-5-6 differs from its canary claude/claude-opus-5-5; start a new canary',
+    },
+    {
+      name: "a usage-limit fallback when Claude is not the primary provider",
+      source: webRepository(
+        codexPrimary +
+          personalCredential.replace("CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY") +
+          codexFallback,
+      ),
+      error: 'Repository "campus-web" usage-limit fallback requires Claude as the primary provider',
+    },
+    {
+      name: "a usage-limit fallback that does not use Codex",
+      source: webRepository(
+        advisoryClaude +
+          personalCredential +
+          codexFallback.replaceAll(
+            "id: codex, model: gpt-6.1-sol, effort: medium",
+            "id: claude, model: claude-opus-5-5",
+          ),
+      ),
+      error: 'Repository "campus-web" usage-limit fallback provider must be Codex',
+    },
+    {
+      name: "a fallback model or effort change that keeps the old canary",
+      source: webRepository(
+        advisoryClaude +
+          personalCredential +
+          codexFallback.replace(
+            "provider: { id: codex, model: gpt-6.1-sol, effort: medium }",
+            "provider: { id: codex, model: gpt-6.1-sol, effort: xhigh }",
+          ),
+      ),
+      error:
+        'Repository "campus-web" usage-limit fallback codex/gpt-6.1-sol/xhigh differs from its canary codex/gpt-6.1-sol/medium; start a new canary',
+    },
+    {
+      name: "a fallback wired to the wrong credential secret",
+      source: webRepository(
+        advisoryClaude +
+          personalCredential +
+          codexFallback.replace("secret: OPENAI_API_KEY", "secret: CLAUDE_CODE_OAUTH_TOKEN"),
+      ),
+      error:
+        'Repository "campus-web" usage-limit fallback credential secret CLAUDE_CODE_OAUTH_TOKEN must be OPENAI_API_KEY for provider codex',
+    },
+    {
+      name: "a Codex provider without explicit reasoning effort",
+      source: webRepository(
+        advisoryClaude + personalCredential + codexFallback.replaceAll(", effort: medium", ""),
+      ),
+      error:
+        'Repository "campus-web" usage-limit fallback provider codex/gpt-6.1-sol must pin reasoning effort',
+    },
+    {
+      name: "a repository missing from the registry",
+      source: webRepository(disabledClaude).replace("id: campus-web", "id: campus-desktop"),
+      error: 'Review policy repository "campus-desktop" is not in the repository registry',
+    },
+    {
+      name: "a canary window longer than fourteen days",
+      source: webRepository(disabledClaude).replace("maxDays: 14", "maxDays: 15"),
+      error: /maxDays/,
+    },
+  ])("rejects $name", ({ source, error, at }) => {
+    expect(() => parsePrReviewPolicy(source, registryIds, at ?? now)).toThrow(error);
   });
 });

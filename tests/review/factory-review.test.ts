@@ -451,60 +451,44 @@ describe("FactoryReviewExecution.fail", () => {
 });
 
 describe("parseReviewResult", () => {
-  test("rejects unvalidated model fields", () => {
-    expect(() =>
-      parseReviewResult(
-        JSON.stringify({
-          status: "findings",
-          purpose: "Model-controlled purpose",
-          findings: [finding],
-        }),
-      ),
-    ).toThrow("/ must NOT have additional properties");
-  });
-
-  test("rejects findings below the blocking confidence floor", () => {
-    expect(() =>
-      parseReviewResult(
-        JSON.stringify({
-          status: "findings",
-          findings: [{ ...finding, confidence: 0.89 }],
-        }),
-      ),
-    ).toThrow("/findings/0/confidence must be >= 0.9");
-  });
-
-  test("enforces the output schema length limits on model text", () => {
-    expect(() =>
-      parseReviewResult(
-        JSON.stringify({ status: "findings", findings: [{ ...finding, title: "x".repeat(201) }] }),
-      ),
-    ).toThrow("/findings/0/title must NOT have more than 200 characters");
-  });
-
-  test("rejects a fractional finding line", () => {
-    expect(() =>
-      parseReviewResult(
-        JSON.stringify({ status: "findings", findings: [{ ...finding, line: 42.5 }] }),
-      ),
-    ).toThrow("/findings/0/line must be integer");
-  });
-
-  test("rejects whitespace-only finding text", () => {
-    expect(() =>
-      parseReviewResult(
-        JSON.stringify({ status: "findings", findings: [{ ...finding, evidence: "   " }] }),
-      ),
-    ).toThrow("finding 0 evidence must not be blank");
-  });
-
-  test("rejects a status that contradicts its findings", () => {
-    expect(() =>
-      parseReviewResult(JSON.stringify({ status: "clean", findings: [finding] })),
-    ).toThrow('Review status "clean" requires an empty findings array');
-    expect(() =>
-      parseReviewResult(JSON.stringify({ status: "findings", findings: [] })),
-    ).toThrow('Review status "findings" requires at least one finding');
+  test.each<{ name: string; output: unknown; error: string }>([
+    {
+      name: "unvalidated model fields",
+      output: { status: "findings", purpose: "Model-controlled purpose", findings: [finding] },
+      error: "/ must NOT have additional properties",
+    },
+    {
+      name: "findings below the blocking confidence floor",
+      output: { status: "findings", findings: [{ ...finding, confidence: 0.89 }] },
+      error: "/findings/0/confidence must be >= 0.9",
+    },
+    {
+      name: "model text over the output schema length limit",
+      output: { status: "findings", findings: [{ ...finding, title: "x".repeat(201) }] },
+      error: "/findings/0/title must NOT have more than 200 characters",
+    },
+    {
+      name: "a fractional finding line",
+      output: { status: "findings", findings: [{ ...finding, line: 42.5 }] },
+      error: "/findings/0/line must be integer",
+    },
+    {
+      name: "whitespace-only finding text",
+      output: { status: "findings", findings: [{ ...finding, evidence: "   " }] },
+      error: "finding 0 evidence must not be blank",
+    },
+    {
+      name: "a clean status that carries findings",
+      output: { status: "clean", findings: [finding] },
+      error: 'Review status "clean" requires an empty findings array',
+    },
+    {
+      name: "a findings status without findings",
+      output: { status: "findings", findings: [] },
+      error: 'Review status "findings" requires at least one finding',
+    },
+  ])("rejects $name", ({ output, error }) => {
+    expect(() => parseReviewResult(JSON.stringify(output))).toThrow(error);
   });
 });
 
