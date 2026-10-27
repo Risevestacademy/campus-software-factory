@@ -47,7 +47,9 @@ SHA. Its package manifest provides the applicable standard scripts:
 - Mobile: optionally `contract:check`.
 
 The stable required result is `quality-gate`. Its exact GitHub check name must
-be recorded from a disposable integration PR before branch enforcement.
+be recorded from a disposable integration PR before branch enforcement. Until a
+repository adopts `templates/factory-caller.yml`, its existing stable check
+stands in (Campus Web: `build`).
 
 ## Merge authority
 

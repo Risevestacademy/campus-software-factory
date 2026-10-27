@@ -3,13 +3,25 @@
 `expected.json` is the live snapshot of every `policies/repo-registry.yaml`
 repository's `factory-*` rulesets. A repository with none is listed with
 `rulesets: []`, because the collector reports every registry repository.
-Regenerate it after an intended ruleset change instead of editing it by hand:
+Regenerate it after an intended ruleset change instead of editing it by hand.
+The temporary file keeps a failed collection from emptying the snapshot:
 
 ```bash
-FACTORY_AUDIT_TOKEN="$(gh auth token)" pnpm --silent drift:collect \
-  | jq '{"$schema": "../schema/ruleset-snapshot.schema.json"} + .' \
-  > policies/rulesets/expected.json
+FACTORY_AUDIT_TOKEN="$(gh auth token)" pnpm --silent drift:collect > /tmp/rulesets.json \
+  && jq '{"$schema": "../schema/ruleset-snapshot.schema.json"} + .' /tmp/rulesets.json \
+  > /tmp/expected.json && mv /tmp/expected.json policies/rulesets/expected.json
 ```
+
+The collector needs a token with write access to rulesets (fine-grained
+Administration: write, or a repository admin's `gh` login). GitHub omits
+`bypass_actors` for anything weaker, and the collector then fails instead of
+reporting missing bypass actors. The `FACTORY_AUDIT_TOKEN` secret is a
+fine-grained token with Administration read and write, Contents and Metadata
+read on every registry repository, plus organization Members read.
+
+Apply a changed request body to the live ruleset with
+`gh api -X PUT repos/<repository>/rulesets/<id> --input <body>`, then
+regenerate the snapshot.
 
 Each product repository carries one factory ruleset:
 
@@ -20,11 +32,14 @@ Each product repository carries one factory ruleset:
   `policies/pr-review.yaml`, it also requires the `Factory PR Review` check.
   It replaces any earlier hand-made branch rulesets, which drift cannot see.
 
-| Repository | Ruleset | Request body | Stable CI check |
-| --- | --- | --- | --- |
-| campus-web | `factory-quality` | `campus-web-factory-quality.json` | `build` |
-| campus-server | none yet | | |
-| campus-mobile | none yet | | |
+| Repository | Ruleset | Request body | Stable CI check | Up to date with base |
+| --- | --- | --- | --- | --- |
+| campus-web | `factory-quality` (25990419) | `campus-web-factory-quality.json` | `build` | required |
+| campus-server | none yet | | | |
+| campus-mobile | none yet | | | |
+
+Campus Web keeps the up-to-date requirement its earlier `protect-*` rulesets
+had; factory `main` does not require it.
 
 `factory-merge-actor`, which would let only the owner team merge into the
 default branch, is not adopted in V1. With a two-person owner team it would

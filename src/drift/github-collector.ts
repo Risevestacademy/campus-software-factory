@@ -94,10 +94,7 @@ export function normalizeRuleset(value: unknown): RulesetDefinition {
     sourceType: requireString(ruleset.source_type, "ruleset source type"),
     enforcement,
     conditions: toJsonObject(ruleset.conditions, "ruleset conditions"),
-    bypassActors: requireArray(
-      ruleset.bypass_actors ?? [],
-      "ruleset bypass actors",
-    ).map((actorValue) => {
+    bypassActors: requireBypassActors(ruleset).map((actorValue) => {
       const actor = requireObject(actorValue, "ruleset bypass actor");
       return {
         actorId:
@@ -110,6 +107,17 @@ export function normalizeRuleset(value: unknown): RulesetDefinition {
     }),
     rules: requireArray(ruleset.rules ?? [], "ruleset rules").map(normalizeRule),
   };
+}
+
+// GitHub withholds bypass_actors from tokens without write access to the ruleset;
+// treating that as [] would report or hide bypass drift.
+function requireBypassActors(ruleset: Record<string, unknown>): unknown[] {
+  if (ruleset.bypass_actors === undefined) {
+    throw new Error(
+      `Ruleset "${String(ruleset.name)}" has no bypass_actors; the audit token needs Administration: write`,
+    );
+  }
+  return requireArray(ruleset.bypass_actors, "ruleset bypass actors");
 }
 
 function normalizeRule(value: unknown): RulesetRule {
