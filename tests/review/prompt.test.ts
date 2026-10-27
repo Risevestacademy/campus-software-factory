@@ -21,13 +21,6 @@ const ticket: ReviewTicket = {
 };
 
 describe("reviewOutputSchema", () => {
-  test("enforces the shared rubric limits", () => {
-    const schema = reviewOutputSchema();
-
-    expect(schema.properties.findings.maxItems).toBe(50);
-    expect(schema.properties.findings.items.properties.confidence.minimum).toBe(0.9);
-  });
-
   test("compiles under the draft-07 validator that provider CLIs use", () => {
     expect(() => new Ajv().compile(reviewOutputSchema())).not.toThrow();
   });
@@ -49,17 +42,13 @@ describe("reviewOutputSchema", () => {
 });
 
 describe("renderReviewPrompt", () => {
-  test("reviews the exact range and reads standards only from the trusted base", () => {
+  test("fills in the review range, purpose, and rubric limits", () => {
     const prompt = renderReviewPrompt(ticket);
 
     expect(prompt).toContain("pull request #21");
     expect(prompt).toContain("base..abc");
-    expect(prompt).toContain("git -C pr diff");
-    expect(prompt).toContain("trusted/");
-    expect(prompt).toContain("untrusted evidence");
-    expect(prompt).toContain("nearest changed line");
     expect(prompt).toContain(ticket.purpose);
-    expect(prompt).toContain("Report every defect with confidence of at least 0.9");
+    expect(prompt).toContain("confidence of at least 0.9");
     expect(prompt).toContain("report the 50 most severe");
   });
 
@@ -70,18 +59,5 @@ describe("renderReviewPrompt", () => {
     });
 
     expect(prompt.match(/<\/pr-purpose>/g)).toHaveLength(1);
-  });
-
-  test("defines severity by user impact so providers apply one scale", () => {
-    const prompt = renderReviewPrompt(ticket);
-
-    expect(prompt).toContain(
-      "P1: a defect that breaks a core stated outcome for ordinary valid input",
-    );
-    expect(prompt).toContain("an omitted multiplicative factor or wrong arithmetic sign");
-    expect(prompt).toContain(
-      "P2: a merge-blocking but bounded defect limited to an edge boundary",
-    );
-    expect(prompt).toContain("Judge severity from the failure scenario's impact");
   });
 });

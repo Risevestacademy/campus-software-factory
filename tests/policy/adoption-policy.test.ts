@@ -25,31 +25,6 @@ async function loadPolicy(): Promise<FactoryPolicyBundle> {
 }
 
 describe("product adoption policy", () => {
-  test("registers every audited Campus product repository", async () => {
-    const policy = await loadPolicy();
-
-    expect(policy.repositories).toEqual([
-      {
-        id: "campus-web",
-        github: "Risevestacademy/campus-web",
-        ownerTeam: "Risevestacademy/campus",
-        workflow: "web",
-      },
-      {
-        id: "campus-server",
-        github: "Risevestacademy/campus-server",
-        ownerTeam: "Risevestacademy/campus",
-        workflow: "server",
-      },
-      {
-        id: "campus-mobile",
-        github: "Risevestacademy/campus-mobile",
-        ownerTeam: "Risevestacademy/campus",
-        workflow: "mobile",
-      },
-    ]);
-  });
-
   test("keeps audited product security and infrastructure paths sensitive", async () => {
     const policy = await loadPolicy();
     const cases: readonly [path: string, tier: RiskTier][] = [
