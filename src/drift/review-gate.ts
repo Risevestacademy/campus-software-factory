@@ -80,7 +80,9 @@ export function auditReviewGate(input: ReviewGateInput): DriftFinding[] {
   return findings;
 }
 
-function auditCodeowners(input: ReviewGateInput): DriftFinding[] {
+export function auditCodeowners(
+  input: Pick<ReviewGateInput, "repository" | "ownerTeam" | "codeowners">,
+): DriftFinding[] {
   if (input.codeowners === null) {
     return [
       {
