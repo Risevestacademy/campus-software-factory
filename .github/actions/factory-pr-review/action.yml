@@ -30,7 +30,7 @@ runs:
   using: composite
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: "22.22.1"
 
@@ -53,7 +53,7 @@ runs:
     - name: Check out the reviewed head as evidence
       id: checkout_pr
       if: steps.preflight.outputs.eligible == 'true'
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: ${{ inputs.repository }}
         ref: ${{ steps.preflight.outputs.head_sha }}
@@ -65,7 +65,7 @@ runs:
     - name: Check out trusted guidance from the target branch
       id: checkout_trusted
       if: steps.preflight.outputs.eligible == 'true'
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: ${{ inputs.repository }}
         ref: ${{ steps.preflight.outputs.base_sha }}
@@ -80,7 +80,7 @@ runs:
 
     - name: Check out review and TDD skills
       if: steps.preflight.outputs.eligible == 'true'
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: mattpocock/skills
         ref: 49dd158d1076134a641b33efb035946536778336
@@ -92,7 +92,7 @@ runs:
 
     - name: Check out Vitest skill
       if: steps.preflight.outputs.eligible == 'true'
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: antfu/skills
         ref: feb0f3aba6566426f12230e7fc7a10d97c1293bb
@@ -121,7 +121,7 @@ runs:
       id: claude_1
       if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'claude'
       continue-on-error: true
-      uses: anthropics/claude-code-action@6c690188da61cf16ee7debb28383ba67f02abb4c # v1.0.242
+      uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1.0.255
       env:
         CLAUDE_CONFIG_DIR: ${{ runner.temp }}/factory-claude-config
         CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -206,7 +206,7 @@ runs:
       id: claude_2
       if: steps.route_1.outputs.run_next == 'true' && steps.route_1.outputs.next_provider == 'claude'
       continue-on-error: true
-      uses: anthropics/claude-code-action@6c690188da61cf16ee7debb28383ba67f02abb4c # v1.0.242
+      uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1.0.255
       env:
         CLAUDE_CONFIG_DIR: ${{ runner.temp }}/factory-claude-config
         CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
