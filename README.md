@@ -179,7 +179,17 @@ must be teams; `pnpm drift:review-gate` enforces the match. See
 [the ruleset notes](policies/rulesets/README.md) for the known check-spoofing
 residual.
 
+### Rollback
+
+When a factory change blocks or breaks a product repository:
+
+1. Urgent merges use the owner-team bypass above; it is recorded on the PR.
+2. Revert that repository's last repin PR, which restores the previous pinned
+   factory SHA. Do not touch other repositories.
+3. If the review itself is at fault, set the repository's `mode: disabled` in
+   `policies/pr-review.yaml` and repin. A ruleset that requires
+   `Factory PR Review` must drop that check in the same change, or merges deadlock.
+4. Fix forward through a reviewed factory PR, then repin and restart the canary.
+
 The Vite+ migration, native hooks, and commit-message enforcement are a
 separate changeset so tooling changes cannot obscure correctness regressions.
-
-See [the build plan](docs/software-factory-build-plan.md) for rollout gates.
