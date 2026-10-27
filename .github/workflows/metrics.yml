@@ -48,7 +48,7 @@ jobs:
         env:
           METRICS_INPUT_FILE: ${{ runner.temp }}/metrics-input.json
           METRICS_REPORT_FILE: ${{ runner.temp }}/metrics-report.json
-        run: pnpm metrics:report "$METRICS_INPUT_FILE" > "$METRICS_REPORT_FILE"
+        run: pnpm --silent metrics:report "$METRICS_INPUT_FILE" > "$METRICS_REPORT_FILE"
       - name: Publish scorecard issue
         env:
           GH_TOKEN: ${{ github.token }}

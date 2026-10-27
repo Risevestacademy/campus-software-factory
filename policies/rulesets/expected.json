@@ -1,4 +1,83 @@
 {
   "$schema": "../schema/ruleset-snapshot.schema.json",
-  "repositories": []
+  "repositories": [
+    {
+      "repository": "Risevestacademy/campus-web",
+      "rulesets": [
+        {
+          "name": "factory-quality",
+          "target": "branch",
+          "source": "Risevestacademy/campus-web",
+          "sourceType": "Repository",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "exclude": [],
+              "include": [
+                "refs/heads/dev",
+                "refs/heads/main"
+              ]
+            }
+          },
+          "bypassActors": [
+            {
+              "actorId": 20303158,
+              "actorType": "Team",
+              "bypassMode": "pull_request"
+            }
+          ],
+          "rules": [
+            {
+              "type": "deletion"
+            },
+            {
+              "type": "non_fast_forward"
+            },
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "required_reviewers": [],
+                "require_code_owner_review": true,
+                "dismissal_restriction": {
+                  "enabled": false,
+                  "allowed_actors": []
+                },
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true,
+                "require_extra_approval_for_unattributed_changes": true,
+                "allowed_merge_methods": [
+                  "merge",
+                  "squash",
+                  "rebase"
+                ]
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": true,
+                "do_not_enforce_on_create": false,
+                "required_status_checks": [
+                  {
+                    "context": "build",
+                    "integration_id": 15368
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repository": "Risevestacademy/campus-server",
+      "rulesets": []
+    },
+    {
+      "repository": "Risevestacademy/campus-mobile",
+      "rulesets": []
+    }
+  ]
 }

@@ -15,7 +15,9 @@ Campus Server and Campus Mobile remain `disabled`. External inputs are validated
 against strict schemas. Factory `main` is protected by
 [`policies/rulesets/factory-main.json`](policies/rulesets/factory-main.json);
 every change lands through a pull request with a green `quality-gate` and a
-`@Risevestacademy/campus` approval, or a recorded team bypass.
+`@Risevestacademy/campus` approval, or a recorded team bypass. Campus Web
+`dev` and `main` are governed by its `factory-quality` ruleset, which the
+weekly drift audit compares against `policies/rulesets/expected.json`.
 
 ## Local commands
 
@@ -45,7 +47,9 @@ SHA. Its package manifest provides the applicable standard scripts:
 - Mobile: optionally `contract:check`.
 
 The stable required result is `quality-gate`. Its exact GitHub check name must
-be recorded from a disposable integration PR before branch enforcement.
+be recorded from a disposable integration PR before branch enforcement. Until a
+repository adopts `templates/factory-caller.yml`, its existing stable check
+stands in (Campus Web: `build`).
 
 ## Merge authority
 
