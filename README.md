@@ -76,7 +76,7 @@ may exist, and the pull request should be split.
 | Missing `## Change and measurable outcome` | `failure`; fix the description and re-run |
 | Reviewer error or invalid output after that provider's second attempt | `failure` (technical); re-run allowed |
 | Claude reports subscription usage exhaustion | Review continues with configured Codex fallback; summary records actual reviewer and Claude refill time |
-| More than 400 changed lines or 15 changed files, excluding configured lockfiles | `neutral`; human review only, no provider usage |
+| More than 2000 changed lines or 50 changed files, excluding configured lockfiles | `neutral`; human review only, no provider usage |
 | Fork pull request | `neutral`; human review only, no credentials used |
 | Draft, or CI not green | no check yet; the required check stays pending |
 
