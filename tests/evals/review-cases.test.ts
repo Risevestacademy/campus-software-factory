@@ -6,6 +6,8 @@ import { buildWorkspace, loadReviewCases } from "../../evals/review/workspace.js
 import { newSideLineRanges } from "../../src/review/index.js";
 
 const cases = loadReviewCases();
+// Real git repositories: defect-large-diff took 4.8s on a loaded machine, against Vitest's 5s default.
+const workspaceBuildTimeoutMilliseconds = 30_000;
 
 describe("review eval cases", () => {
   test.each(cases.map((entry) => [entry.name, entry] as const))(
@@ -27,5 +29,6 @@ describe("review eval cases", () => {
         await rm(workspace.root, { recursive: true, force: true });
       }
     },
+    workspaceBuildTimeoutMilliseconds,
   );
 });

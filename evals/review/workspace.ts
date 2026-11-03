@@ -65,48 +65,45 @@ export async function buildWorkspace(reviewCase: ReviewCase): Promise<ReviewWork
   await writeFiles(repository, reviewCase.head);
   const headSha = commit(repository, "head");
 
-  const changedPaths = git(repository, "diff", "--name-only", baseSha, headSha)
-    .split("\n")
-    .filter((path) => path.length > 0);
   return {
     root,
     baseSha,
     headSha,
-    changedFiles: changedPaths.map((path) =>
-      changedFile(repository, baseSha, headSha, path),
-    ),
+    changedFiles: changedFiles(repository, baseSha, headSha),
   };
 }
 
-function changedFile(
+// One diff per workspace: spawning git per file outran the gate test's timeout on
+// defect-large-diff. Cases only add or overwrite files, so no rename can misalign these lists.
+function changedFiles(
   repository: string,
   baseSha: string,
   headSha: string,
-  path: string,
-): ChangedFile {
-  const [additions, deletions] = git(
-    repository,
-    "diff",
-    "--numstat",
-    baseSha,
-    headSha,
-    "--",
-    path,
-  ).split("\t");
-  if (
-    additions === undefined ||
-    deletions === undefined ||
-    !/^\d+$/.test(additions) ||
-    !/^\d+$/.test(deletions)
-  ) {
-    throw new Error(`Cannot measure changed lines for ${path}`);
-  }
-  return {
-    path,
-    additions: Number(additions),
-    deletions: Number(deletions),
-    patch: git(repository, "diff", baseSha, headSha, "--", path),
-  };
+): ChangedFile[] {
+  const patches = git(repository, "diff", baseSha, headSha).split(/^(?=diff --git )/m);
+  return git(repository, "diff", "--numstat", baseSha, headSha)
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line, index) => {
+      const [additions, deletions, path] = line.split("\t");
+      const patch = patches[index];
+      if (
+        additions === undefined ||
+        deletions === undefined ||
+        path === undefined ||
+        patch === undefined ||
+        !/^\d+$/.test(additions) ||
+        !/^\d+$/.test(deletions)
+      ) {
+        throw new Error(`Cannot measure changed lines for ${line}`);
+      }
+      return {
+        path,
+        additions: Number(additions),
+        deletions: Number(deletions),
+        patch: patch.trim(),
+      };
+    });
 }
 
 function git(repository: string, ...args: string[]): string {

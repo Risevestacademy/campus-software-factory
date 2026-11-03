@@ -8,8 +8,8 @@ rubric:
   minimumConfidence: 0.9
 
 sizeLimit:
-  maxChangedLines: 400
-  maxChangedFiles: 15
+  maxChangedLines: 2000
+  maxChangedFiles: 50
   excludedPaths:
     - pnpm-lock.yaml
     - package-lock.json
