@@ -121,7 +121,7 @@ runs:
       id: claude_1
       if: steps.preflight.outputs.eligible == 'true' && steps.preflight.outputs.provider == 'claude'
       continue-on-error: true
-      uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1.0.255
+      uses: anthropics/claude-code-action@925afb53776cf1a2b738c6bdbed37b4d4000ef13 # v1.0.262
       env:
         CLAUDE_CONFIG_DIR: ${{ runner.temp }}/factory-claude-config
         CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -206,7 +206,7 @@ runs:
       id: claude_2
       if: steps.route_1.outputs.run_next == 'true' && steps.route_1.outputs.next_provider == 'claude'
       continue-on-error: true
-      uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1.0.255
+      uses: anthropics/claude-code-action@925afb53776cf1a2b738c6bdbed37b4d4000ef13 # v1.0.262
       env:
         CLAUDE_CONFIG_DIR: ${{ runner.temp }}/factory-claude-config
         CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
