@@ -22,7 +22,12 @@ const repository = "Risevestacademy/campus-web";
 const sizeLimit = {
   maxChangedLines: 400,
   maxChangedFiles: 15,
-  excludedPaths: ["pnpm-lock.yaml", "package-lock.json", "yarn.lock"],
+  excludedPaths: [
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "**/migrations/meta/*_snapshot.json",
+  ],
 };
 
 const finding: ReviewFinding = {
@@ -275,7 +280,7 @@ describe("FactoryReviewExecution.preflight", () => {
     ]);
   });
 
-  test("excludes lockfiles from changed-line and changed-file limits", async () => {
+  test("excludes lockfiles and migration snapshots from size limits", async () => {
     const github = createGitHub({
       changedFiles: [
         {
@@ -292,6 +297,12 @@ describe("FactoryReviewExecution.preflight", () => {
         },
         {
           path: "yarn.lock",
+          patch: null,
+          additions: 10_000,
+          deletions: 10_000,
+        },
+        {
+          path: "apps/campus-api/src/infra/database/migrations/meta/0042_snapshot.json",
           patch: null,
           additions: 10_000,
           deletions: 10_000,

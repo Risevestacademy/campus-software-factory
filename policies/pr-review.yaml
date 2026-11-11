@@ -14,6 +14,7 @@ sizeLimit:
     - pnpm-lock.yaml
     - package-lock.json
     - yarn.lock
+    - "**/migrations/meta/*_snapshot.json"
 
 canary:
   minimumPullRequests: 10
@@ -56,12 +57,37 @@ repositories:
         expiresOn: "2027-10-25"
         rotateBy: "2027-09-25"
   - id: campus-server
-    mode: disabled
+    mode: advisory
     ciWorkflowName: CI
     targetBranches: [dev, main]
     provider:
       id: claude
       model: claude-opus-5-5
+    canaryStartsAt: "2026-11-11T11:18:00Z"
+    canaryProvider:
+      id: claude
+      model: claude-opus-5-5
+    credential:
+      secret: CLAUDE_CODE_OAUTH_TOKEN
+      ownership: personal
+      owner: AJ1732
+      expiresOn: "2027-10-25"
+      rotateBy: "2027-09-25"
+    usageLimitFallback:
+      provider:
+        id: codex
+        model: gpt-6.1-sol
+        effort: medium
+      canaryProvider:
+        id: codex
+        model: gpt-6.1-sol
+        effort: medium
+      credential:
+        secret: OPENAI_API_KEY
+        ownership: personal
+        owner: AJ1732
+        expiresOn: "2027-10-25"
+        rotateBy: "2027-09-25"
   - id: campus-mobile
     mode: advisory
     ciWorkflowName: Mobile quality
