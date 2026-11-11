@@ -29,7 +29,7 @@ jobs:
       - name: Collect actual factory rulesets
         env:
           FACTORY_AUDIT_TOKEN: ${{ secrets.FACTORY_AUDIT_TOKEN }}
-        run: pnpm drift:collect > "$RUNNER_TEMP/actual-rulesets.json"
+        run: pnpm --silent drift:collect > "$RUNNER_TEMP/actual-rulesets.json"
       - name: Compare expected and actual rulesets
         id: drift
         env:
@@ -37,7 +37,7 @@ jobs:
           DRIFT_REPORT: ${{ runner.temp }}/drift-report.json
         run: |
           set +e
-          pnpm drift:check policies/rulesets/expected.json "$ACTUAL_RULESETS" > "$DRIFT_REPORT"
+          pnpm --silent drift:check policies/rulesets/expected.json "$ACTUAL_RULESETS" > "$DRIFT_REPORT"
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
@@ -52,7 +52,7 @@ jobs:
           GATE_REPORT: ${{ runner.temp }}/review-gate-report.json
         run: |
           set +e
-          pnpm drift:review-gate > "$GATE_REPORT"
+          pnpm --silent drift:review-gate > "$GATE_REPORT"
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then

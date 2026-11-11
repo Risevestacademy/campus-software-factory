@@ -51,6 +51,20 @@ describe("normalizeRuleset", () => {
       ],
     });
   });
+
+  test("rejects a ruleset whose bypass actors GitHub withheld", () => {
+    expect(() =>
+      normalizeRuleset({
+        name: "factory-quality",
+        target: "branch",
+        source: "rise/campus-web",
+        source_type: "Repository",
+        enforcement: "active",
+        conditions: { ref_name: { include: ["refs/heads/dev"], exclude: [] } },
+        rules: [],
+      }),
+    ).toThrow(/needs Administration: write/);
+  });
 });
 
 describe("review gate collection", () => {
