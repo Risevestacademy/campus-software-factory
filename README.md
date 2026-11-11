@@ -10,8 +10,8 @@ does not run the Campus product or deploy production releases.
 ## Current state
 
 The deterministic policy, baseline/current metrics, full ruleset drift, and the
-provider-neutral review gate are implemented. Campus Web and Campus Mobile are in
-advisory rollout; Campus Server remains `disabled`. External inputs are validated
+provider-neutral review gate are implemented. Campus Web, Campus Server and
+Campus Mobile are in advisory rollout. External inputs are validated
 against strict schemas. Factory `main` is protected by
 [`policies/rulesets/factory-main.json`](policies/rulesets/factory-main.json);
 every change lands through a pull request with a green `quality-gate` and a
@@ -76,7 +76,7 @@ may exist, and the pull request should be split.
 | Missing `## Change and measurable outcome` | `failure`; fix the description and re-run |
 | Reviewer error or invalid output after that provider's second attempt | `failure` (technical); re-run allowed |
 | Claude reports subscription usage exhaustion | Review continues with configured Codex fallback; summary records actual reviewer and Claude refill time |
-| More than 2000 changed lines or 50 changed files, excluding configured lockfiles | `neutral`; human review only, no provider usage |
+| More than 2000 changed lines or 50 changed files, excluding configured lockfiles and generated migration snapshots | `neutral`; human review only, no provider usage |
 | Fork pull request | `neutral`; human review only, no credentials used |
 | Draft, or CI not green | no check yet; the required check stays pending |
 
@@ -88,8 +88,9 @@ re-rolled.
 
 `templates/factory-review-caller.yml` triggers on `workflow_run` after product
 CI completes. Before starting a provider, the action excludes configured
-lockfiles and measures changed lines and files. Oversized pull requests receive
-a completed neutral check and never start an AI review. The
+lockfiles and generated Drizzle migration snapshots, then measures changed
+lines and files. Oversized pull requests receive a completed neutral check and
+never start an AI review. The
 `factory-pr-review` action reads policy from the pinned factory commit, checks
 out the head as untrusted evidence in `pr/` and the
 target branch's guidance in `trusted/`, and runs the primary provider pinned for
