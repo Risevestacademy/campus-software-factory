@@ -25,6 +25,7 @@ const finding: ReviewFinding = {
   failureScenario: "A renewing user is disconnected.",
   requestedChange: "Clear presence only after renewal settles.",
   source: "PR acceptance criterion",
+  relatedLocation: null,
 };
 const expected: ReviewResult = { status: "findings", findings: [finding] };
 const fixtureJson = JSON.stringify(expected);

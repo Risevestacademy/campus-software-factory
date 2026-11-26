@@ -33,7 +33,8 @@
           "evidence",
           "failureScenario",
           "requestedChange",
-          "source"
+          "source",
+          "relatedLocation"
         ],
         "properties": {
           "axis": {
@@ -89,6 +90,32 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 500
+          },
+          "relatedLocation": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "path",
+                  "line"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            ]
           }
         }
       }

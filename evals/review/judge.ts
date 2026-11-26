@@ -1,4 +1,9 @@
-import { severityRank, type ReviewResult } from "../../src/review/index.ts";
+import {
+  severityRank,
+  type FindingLocation,
+  type ReviewFinding,
+  type ReviewResult,
+} from "../../src/review/index.ts";
 import type { ExpectedReview, SeededDefect } from "./workspace.ts";
 
 export interface Judgement {
@@ -40,7 +45,7 @@ function judgeDefect(defect: SeededDefect, result: ReviewResult): Judgement {
     (finding) => severityRank[finding.severity] <= severityRank[defect.severity],
   );
   return severeEnough
-    ? { passed: true, detail: `found defect at ${location}` }
+    ? { passed: true, detail: `found defect at ${location}: ${firstLocated.title}` }
     : {
         passed: false,
         detail: `found ${firstLocated.path}:${firstLocated.line} but severity ${firstLocated.severity} is below ${defect.severity}`,
@@ -50,10 +55,28 @@ function judgeDefect(defect: SeededDefect, result: ReviewResult): Judgement {
 function findingsAt(defect: SeededDefect, result: ReviewResult) {
   return result.findings.filter(
     (finding) =>
-      finding.path === defect.path &&
-      finding.line >= defect.lines[0] &&
-      finding.line <= defect.lines[1],
+      [finding, finding.relatedLocation].some(
+        (location) => location !== null && within(location, defect),
+      ) && namesDefect(finding, defect),
   );
+}
+
+function within(location: FindingLocation, defect: SeededDefect): boolean {
+  return (
+    location.path === defect.path &&
+    location.line >= defect.lines[0] &&
+    location.line <= defect.lines[1]
+  );
+}
+
+function namesDefect(finding: ReviewFinding, defect: SeededDefect): boolean {
+  if (defect.mentions === undefined) {
+    return true;
+  }
+  const text = [finding.title, finding.evidence, finding.requestedChange]
+    .join("\n")
+    .toLowerCase();
+  return defect.mentions.some((mention) => text.includes(mention.toLowerCase()));
 }
 
 function summarize(result: ReviewResult): string {

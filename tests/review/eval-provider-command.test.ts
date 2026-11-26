@@ -11,6 +11,7 @@ const fallbackPolicy: RepositoryReviewPolicy = {
   mode: "advisory",
   ciWorkflowName: "CI",
   targetBranches: ["dev", "main"],
+  standardsPaths: ["AGENTS.md"],
   provider: { id: "claude", model: "claude-opus-5-5" },
   usageLimitFallback: {
     provider: { id: "codex", model: "gpt-6.1-sol", effort: "medium" },
@@ -25,6 +26,7 @@ const commandContext = {
   schema: '{"type":"object"}',
   schemaPath: "/factory/review-output.schema.json",
   outputPath: "/tmp/review-eval/provider-output.json",
+  maxTurns: 89,
 };
 
 describe("configuredEvalProviders", () => {
@@ -43,7 +45,7 @@ describe("buildEvalCommand", () => {
     expect(invocation.command).toBe("claude");
     expect(invocation.result).toBe("stdout");
     expect(invocation.args).toContain("claude-opus-5-5");
-    expect(invocation.args).toContain("--max-turns");
+    expect(invocation.args[invocation.args.indexOf("--max-turns") + 1]).toBe("89");
     expect(invocation.args).toContain('{"type":"object"}');
   });
 

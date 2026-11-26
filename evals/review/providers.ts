@@ -1,5 +1,4 @@
 import {
-  reviewMaxTurns,
   type RepositoryReviewPolicy,
   type ReviewProvider,
 } from "../../src/review/index.ts";
@@ -10,6 +9,7 @@ export interface EvalCommandContext {
   schema: string;
   schemaPath: string;
   outputPath: string;
+  maxTurns: number;
 }
 
 export interface EvalCommand {
@@ -51,7 +51,7 @@ export function buildEvalCommand(
         "--model",
         provider.model,
         "--max-turns",
-        String(reviewMaxTurns),
+        String(context.maxTurns),
         "--allowedTools",
         "Read",
         "Glob",

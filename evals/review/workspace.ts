@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import type { ChangedFile, ReviewFinding } from "../../src/review/index.ts";
+import {
+  extractPrPurpose,
+  type ChangedFile,
+  type ReviewFinding,
+} from "../../src/review/index.ts";
 
 // Rubric v1 posted at most this many findings; a case seeding more proves none are dropped.
 export const formerFindingsCap = 3;
@@ -13,6 +17,11 @@ export interface SeededDefect {
   path: string;
   lines: [number, number];
   severity: ReviewFinding["severity"];
+  // Code the pull request should have changed but left untouched.
+  outsideDiff?: true;
+  // A finding names this defect only if its text holds one of these, so a
+  // different defect in the same lines earns no credit.
+  mentions?: string[];
 }
 
 export type ExpectedReview =
@@ -22,6 +31,8 @@ export type ExpectedReview =
 export interface ReviewCase {
   name: string;
   purpose: string;
+  trusted: Record<string, string>;
+  standardsPaths: string[];
   base: Record<string, string>;
   head: Record<string, string>;
   expect: ExpectedReview;
@@ -41,6 +52,8 @@ const trustedGuidance = `# Repository standards
 - Behavior must match the pull request's stated purpose.
 - Tests protect observable behavior, not implementation details.
 `;
+const defaultTrusted = { "AGENTS.md": trustedGuidance };
+const defaultStandardsPaths = ["AGENTS.md"];
 
 export function loadReviewCases(): ReviewCase[] {
   return readdirSync(casesDirectory)
@@ -57,7 +70,7 @@ export async function buildWorkspace(reviewCase: ReviewCase): Promise<ReviewWork
   const root = await mkdtemp(join(tmpdir(), `factory-review-eval-${reviewCase.name}-`));
   const repository = join(root, "pr");
   await mkdir(repository);
-  await writeFiles(join(root, "trusted"), { "AGENTS.md": trustedGuidance });
+  await writeFiles(join(root, "trusted"), reviewCase.trusted);
 
   git(repository, "init", "--quiet", "--initial-branch=main");
   await writeFiles(repository, reviewCase.base);
@@ -158,11 +171,35 @@ function parseCase(value: unknown, file: string): ReviewCase {
   }
   return {
     name: requireString(entry.name, `${file} name`),
-    purpose: requireString(entry.purpose, `${file} purpose`),
+    purpose: casePurpose(entry, file),
+    trusted:
+      entry.trusted === undefined
+        ? defaultTrusted
+        : requireFiles(entry.trusted, `${file} trusted`),
+    standardsPaths:
+      entry.standardsPaths === undefined
+        ? defaultStandardsPaths
+        : requireStrings(entry.standardsPaths, `${file} standardsPaths`),
     base: requireFiles(entry.base, `${file} base`),
     head: requireFiles(entry.head, `${file} head`),
     expect: expected,
   };
+}
+
+// A body runs through production purpose extraction, so a case can prove which
+// PR sections reach the reviewer.
+function casePurpose(entry: Record<string, unknown>, file: string): string {
+  if ((entry.purpose === undefined) === (entry.body === undefined)) {
+    throw new Error(`${file} must set exactly one of purpose or body`);
+  }
+  if (entry.purpose !== undefined) {
+    return requireString(entry.purpose, `${file} purpose`);
+  }
+  const purpose = extractPrPurpose(requireString(entry.body, `${file} body`));
+  if (purpose === null) {
+    throw new Error(`${file} body has no PR purpose`);
+  }
+  return purpose;
 }
 
 function parseDefect(value: unknown, label: string): SeededDefect {
@@ -179,11 +216,21 @@ function parseDefect(value: unknown, label: string): SeededDefect {
   if (severity !== "P0" && severity !== "P1" && severity !== "P2") {
     throw new Error(`${label}.severity must be "P0", "P1", or "P2"`);
   }
-  return {
+  let parsed: SeededDefect = {
     path: requireString(defect.path, `${label}.path`),
     lines: [lines[0] as number, lines[1] as number],
     severity,
   };
+  if (defect.outsideDiff !== undefined) {
+    if (defect.outsideDiff !== true) {
+      throw new Error(`${label}.outsideDiff must be true when set`);
+    }
+    parsed = { ...parsed, outsideDiff: true };
+  }
+  if (defect.mentions !== undefined) {
+    parsed = { ...parsed, mentions: requireStrings(defect.mentions, `${label}.mentions`) };
+  }
+  return parsed;
 }
 
 function requireFiles(value: unknown, label: string): Record<string, string> {
@@ -192,6 +239,13 @@ function requireFiles(value: unknown, label: string): Record<string, string> {
     requireString(content, `${label} ${path}`);
   }
   return files as Record<string, string>;
+}
+
+function requireStrings(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${label} must be a non-empty array`);
+  }
+  return value.map((entry, index) => requireString(entry, `${label}[${index}]`));
 }
 
 function requireObject(value: unknown, label: string): Record<string, unknown> {

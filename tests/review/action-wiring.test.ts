@@ -54,11 +54,13 @@ describe("Factory PR Review composite action wiring", () => {
       "bubblewrap",
       "claude_1",
       "codex_1",
+      "transcript_1",
       "keep_1",
       "validate_1",
       "route_1",
       "claude_2",
       "codex_2",
+      "transcript_2",
       "keep_2",
       "validate_2",
       "route_2",
@@ -156,6 +158,17 @@ describe("Factory PR Review composite action wiring", () => {
     }
     expect(step("checkout_pr").with?.ref).toBe("${{ steps.preflight.outputs.head_sha }}");
     expect(step("checkout_trusted").with?.ref).toBe("${{ steps.preflight.outputs.base_sha }}");
+    expect(step("checkout_trusted").with?.["sparse-checkout"]).toBe(
+      "${{ steps.preflight.outputs.standards_paths }}",
+    );
+  });
+
+  test("keeps each Claude transcript briefly, before keep moves the file away", () => {
+    for (const attempt of ["1", "2"]) {
+      const transcript = step(`transcript_${attempt}`);
+      expect(transcript.with?.path).toBe(step(`keep_${attempt}`).env?.CLAUDE_FILE);
+      expect(Number(transcript.with?.["retention-days"])).toBeLessThanOrEqual(7);
+    }
   });
 
   test("completes a pending check as technical on any later failure or cancellation", () => {

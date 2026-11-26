@@ -1,0 +1,27 @@
+{
+  "name": "defect-requirement-in-changes-section",
+  "body": "## Summary\n\nAdmins can delete an account when its owner asks.\n\n## Change and measurable outcome\n\n- `deleteAccount` marks the user deleted, clears their personal fields and ends their sessions.\n- The account can no longer sign in.\n\n## Changes\n\n- In one transaction, with the user row locked:\n  - the status becomes `deleted` and name and phone are cleared\n  - all sessions are revoked\n  - pending invites to the account's email are revoked\n\n## Testing\n\n- [x] Unit tests\n\n## Notes for Reviewers\n\n- Deletion is final; there is no undo.\n",
+  "base": {
+    "src/db.ts": "export interface Database {\n  one<T>(sql: string, params: unknown[]): Promise<T>;\n  query(sql: string, params: unknown[]): Promise<void>;\n  transaction(work: (tx: Database) => Promise<void>): Promise<void>;\n}\n\nexport declare const db: Database;\n",
+    "src/users.ts": "import { db } from \"./db\";\n\nexport async function suspendAccount(userId: string): Promise<void> {\n  await db.transaction(async (tx) => {\n    await tx.query(\"UPDATE users SET status = 'suspended' WHERE id = $1\", [userId]);\n    await tx.query(\"DELETE FROM sessions WHERE user_id = $1\", [userId]);\n  });\n}\n"
+  },
+  "head": {
+    "src/users.ts": "import { db } from \"./db\";\n\nexport async function suspendAccount(userId: string): Promise<void> {\n  await db.transaction(async (tx) => {\n    await tx.query(\"UPDATE users SET status = 'suspended' WHERE id = $1\", [userId]);\n    await tx.query(\"DELETE FROM sessions WHERE user_id = $1\", [userId]);\n  });\n}\n\nexport async function deleteAccount(userId: string): Promise<void> {\n  await db.transaction(async (tx) => {\n    await tx.one<{ email: string }>(\"SELECT email FROM users WHERE id = $1 FOR UPDATE\", [userId]);\n    await tx.query(\"UPDATE users SET status = 'deleted', name = '', phone = NULL WHERE id = $1\", [userId]);\n    await tx.query(\"DELETE FROM sessions WHERE user_id = $1\", [userId]);\n  });\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "defects": [
+      {
+        "path": "src/users.ts",
+        "lines": [
+          10,
+          16
+        ],
+        "severity": "P2",
+        "mentions": [
+          "invite"
+        ]
+      }
+    ]
+  }
+}

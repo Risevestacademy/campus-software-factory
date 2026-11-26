@@ -5,3 +5,7 @@ import { providerAdapter } from "../../src/review/index.ts";
 export function reviewOutputFromCli(stdout: string): string {
   return providerAdapter("claude").outputFrom(`[${stdout}]`);
 }
+
+export function reviewFailureFromCli(stdout: string): string | undefined {
+  return providerAdapter("claude").failureFrom(`[${stdout}]`)?.reason;
+}

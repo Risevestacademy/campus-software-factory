@@ -1,0 +1,38 @@
+{
+  "name": "defect-module-readme-standard",
+  "purpose": "Admins can delete an account. The user's status becomes deleted, their sessions end, and an `account_deleted` audit entry records who deleted whom.",
+  "trusted": {
+    "CONTRIBUTIONS.md": "# Contributing\n\n- Each module's README is binding for changes inside that module.\n- Keep pull requests focused on one change.\n",
+    "src/modules/audit/README.md": "# Audit\n\nAppend-only log of privileged actions.\n\n## Rules\n\n- Every audit entry's `metadata` includes `requestId`, taken from the caller's\n  request context, so the entry can be joined to its trace.\n\n## Adding an action\n\n1. Add the action name to `AuditAction` in `audit.types.ts`.\n2. Add a row for it to the Actions table below.\n\n## Actions\n\n| Action | Written when |\n|---|---|\n| `user_suspended` | An admin suspends a user |\n| `account_deleted` | An admin deletes an account |\n"
+  },
+  "standardsPaths": [
+    "/CONTRIBUTIONS.md",
+    "**/README.md"
+  ],
+  "base": {
+    "CONTRIBUTIONS.md": "# Contributing\n\n- Each module's README is binding for changes inside that module.\n- Keep pull requests focused on one change.\n",
+    "src/db.ts": "export interface Database {\n  one<T>(sql: string, params: unknown[]): Promise<T>;\n  query(sql: string, params: unknown[]): Promise<void>;\n  transaction(work: (tx: Database) => Promise<void>): Promise<void>;\n}\n\nexport declare const db: Database;\n",
+    "src/modules/audit/README.md": "# Audit\n\nAppend-only log of privileged actions.\n\n## Rules\n\n- Every audit entry's `metadata` includes `requestId`, taken from the caller's\n  request context, so the entry can be joined to its trace.\n\n## Adding an action\n\n1. Add the action name to `AuditAction` in `audit.types.ts`.\n2. Add a row for it to the Actions table below.\n\n## Actions\n\n| Action | Written when |\n|---|---|\n| `user_suspended` | An admin suspends a user |\n| `account_deleted` | An admin deletes an account |\n",
+    "src/modules/audit/audit.types.ts": "export type AuditAction = \"user_suspended\" | \"account_deleted\";\n\nexport interface AuditEntry {\n  action: AuditAction;\n  actorId: string;\n  targetId: string;\n  metadata: Record<string, string>;\n}\n",
+    "src/modules/audit/audit.ts": "import type { Database } from \"../../db\";\nimport type { AuditEntry } from \"./audit.types\";\n\nexport async function writeAudit(tx: Database, entry: AuditEntry): Promise<void> {\n  await tx.query(\n    \"INSERT INTO audit_log (action, actor_id, target_id, metadata) VALUES ($1, $2, $3, $4)\",\n    [entry.action, entry.actorId, entry.targetId, JSON.stringify(entry.metadata)],\n  );\n}\n"
+  },
+  "head": {
+    "src/modules/users/account-deletion.ts": "import { db } from \"../../db\";\nimport { writeAudit } from \"../audit/audit\";\n\nexport async function deleteAccount(actorId: string, userId: string): Promise<void> {\n  await db.transaction(async (tx) => {\n    await tx.query(\"UPDATE users SET status = 'deleted' WHERE id = $1\", [userId]);\n    await tx.query(\"DELETE FROM sessions WHERE user_id = $1\", [userId]);\n    await writeAudit(tx, {\n      action: \"account_deleted\",\n      actorId,\n      targetId: userId,\n      metadata: { reason: \"admin_request\" },\n    });\n  });\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "defects": [
+      {
+        "path": "src/modules/users/account-deletion.ts",
+        "lines": [
+          8,
+          13
+        ],
+        "severity": "P2",
+        "mentions": [
+          "requestId"
+        ]
+      }
+    ]
+  }
+}

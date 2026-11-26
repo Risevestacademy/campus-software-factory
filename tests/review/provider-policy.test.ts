@@ -7,7 +7,7 @@ const now = new Date("2026-10-25T00:00:00.000Z");
 
 const header = `version: 1
 checkName: Factory PR Review
-rubric: { version: 2, maxFindings: 50, minimumConfidence: 0.9 }
+rubric: { version: 3, maxFindings: 50, minimumConfidence: 0.9 }
 sizeLimit: { maxChangedLines: 400, maxChangedFiles: 15, excludedPaths: [pnpm-lock.yaml, package-lock.json, yarn.lock] }
 canary: { minimumPullRequests: 10, maxDays: 14, maxFalsePositives: 1, maxTechnicalErrorRate: 0.05, maxP95LatencyMinutes: 10 }
 repositories:
@@ -46,6 +46,7 @@ function webRepository(fields: string): string {
   return `${header}  - id: campus-web
     ciWorkflowName: CI
     targetBranches: [dev, main]
+    standardsPaths: [AGENTS.md]
 ${fields}`;
 }
 

@@ -32,6 +32,8 @@ export interface RepositoryReviewPolicy {
   mode: ReviewMode;
   ciWorkflowName: string;
   targetBranches: ("dev" | "main")[];
+  // Sparse-checkout patterns read from the target branch as review standards.
+  standardsPaths: string[];
   provider: ReviewProvider;
   canaryStartsAt?: string;
   canaryProvider?: ReviewProvider;
@@ -56,7 +58,7 @@ export interface ReviewSizeLimit {
 export interface PrReviewPolicy {
   version: 1;
   checkName: "Factory PR Review";
-  rubric: { version: 2; maxFindings: 50; minimumConfidence: 0.9 };
+  rubric: { version: 3; maxFindings: 50; minimumConfidence: 0.9 };
   sizeLimit: ReviewSizeLimit;
   canary: CanaryCriteria;
   repositories: RepositoryReviewPolicy[];

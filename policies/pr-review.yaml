@@ -3,7 +3,7 @@ version: 1
 checkName: Factory PR Review
 
 rubric:
-  version: 2
+  version: 3
   maxFindings: 50
   minimumConfidence: 0.9
 
@@ -28,6 +28,13 @@ repositories:
     mode: advisory
     ciWorkflowName: CI
     targetBranches: [dev, main]
+    standardsPaths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "/CONTRIBUTIONS.md"
+      - "/GLOSSARY.md"
+      - "**/README.md"
+      - "/docs/"
     provider:
       id: claude
       model: claude-opus-5-5
@@ -41,25 +48,16 @@ repositories:
       owner: AJ1732
       expiresOn: "2027-10-25"
       rotateBy: "2027-09-25"
-    usageLimitFallback:
-      provider:
-        id: codex
-        model: gpt-6.1-sol
-        effort: medium
-      canaryProvider:
-        id: codex
-        model: gpt-6.1-sol
-        effort: medium
-      credential:
-        secret: OPENAI_API_KEY
-        ownership: personal
-        owner: AJ1732
-        expiresOn: "2027-10-25"
-        rotateBy: "2027-09-25"
   - id: campus-server
     mode: advisory
     ciWorkflowName: CI
     targetBranches: [dev, main]
+    standardsPaths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "/CONTRIBUTIONS.md"
+      - "**/README.md"
+      - "/docs/"
     provider:
       id: claude
       model: claude-opus-5-5
@@ -73,25 +71,17 @@ repositories:
       owner: AJ1732
       expiresOn: "2027-10-25"
       rotateBy: "2027-09-25"
-    usageLimitFallback:
-      provider:
-        id: codex
-        model: gpt-6.1-sol
-        effort: medium
-      canaryProvider:
-        id: codex
-        model: gpt-6.1-sol
-        effort: medium
-      credential:
-        secret: OPENAI_API_KEY
-        ownership: personal
-        owner: AJ1732
-        expiresOn: "2027-10-25"
-        rotateBy: "2027-09-25"
   - id: campus-mobile
     mode: advisory
     ciWorkflowName: Mobile quality
     targetBranches: [dev, main]
+    standardsPaths:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "/CONTRIBUTIONS.md"
+      - "/README.md"
+      - "/src/**/README.md"
+      - "/docs/"
     provider:
       id: claude
       model: claude-opus-5-5
@@ -105,18 +95,3 @@ repositories:
       owner: AJ1732
       expiresOn: "2027-10-25"
       rotateBy: "2027-09-25"
-    usageLimitFallback:
-      provider:
-        id: codex
-        model: gpt-6.1-sol
-        effort: medium
-      canaryProvider:
-        id: codex
-        model: gpt-6.1-sol
-        effort: medium
-      credential:
-        secret: OPENAI_API_KEY
-        ownership: personal
-        owner: AJ1732
-        expiresOn: "2027-10-27"
-        rotateBy: "2027-09-27"
