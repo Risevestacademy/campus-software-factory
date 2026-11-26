@@ -41,6 +41,7 @@ const finding: ReviewFinding = {
   failureScenario: "A renewing user is disconnected from the active cohort.",
   requestedChange: "Preserve presence until renewal succeeds or fails.",
   source: "PR acceptance criterion: preserve active campus state",
+  relatedLocation: null,
 };
 
 const reviewPolicy: RepositoryReviewPolicy = {
@@ -48,6 +49,7 @@ const reviewPolicy: RepositoryReviewPolicy = {
   mode: "advisory",
   ciWorkflowName: "Campus Web CI",
   targetBranches: ["dev", "main"],
+  standardsPaths: ["AGENTS.md"],
   provider: { id: "claude", model: "claude-opus-5-5" },
   canaryStartsAt: "2026-10-25T09:00:00Z",
   credential: { secret: "CLAUDE_CODE_OAUTH_TOKEN", ownership: "organization" },
@@ -158,9 +160,11 @@ describe("FactoryReviewExecution.preflight", () => {
         pullRequestNumber: 21,
         baseSha: "base",
         headSha: "abc",
-        purpose: "Renew sessions without interrupting active presence.",
+        purpose:
+          "### Change and measurable outcome\n\nRenew sessions without interrupting active presence.",
         checkRunId: 900,
       },
+      maxTurns: 27,
     });
     expect(github.started).toEqual([
       { headSha: "abc", externalId: "factory-review:v1:pending:123" },
@@ -316,6 +320,22 @@ describe("FactoryReviewExecution.preflight", () => {
   });
 });
 
+describe("FactoryReviewExecution turn budget", () => {
+  test.each([
+    { files: 32, maxTurns: 89 },
+    { files: 50, maxTurns: 100 },
+  ])("gives $files changed files $maxTurns turns", async ({ files, maxTurns }) => {
+    const github = createGitHub({ changedFiles: sizedFiles(files, files) });
+
+    await expect(
+      createFactoryReviewExecution(
+        { repository, review: reviewPolicy, sizeLimit: { ...sizeLimit, maxChangedFiles: 50 } },
+        github.port,
+      ).preflight(run),
+    ).resolves.toMatchObject({ kind: "ready", maxTurns });
+  });
+});
+
 function sizedFiles(fileCount: number, changedLines: number): ChangedFile[] {
   return Array.from({ length: fileCount }, (_, index) => ({
     path: `src/file-${index}.ts`,
@@ -412,6 +432,20 @@ describe("FactoryReviewExecution.publish", () => {
     );
   });
 
+  test("never passes a review whose change list was edited during review", async () => {
+    const github = createGitHub({
+      pullRequest: { body: `${pullRequest.body}\n\n## Changes\n\n- Keep presence.` },
+    });
+    const ticket = await readyTicket(github);
+    github.changePullRequest({
+      body: `${pullRequest.body}\n\n## Changes\n\n- Drop presence.`,
+    });
+
+    await expect(
+      execution(github).publish({ ticket, modelOutputJson: cleanOutput }),
+    ).resolves.toEqual({ outcome: "technical", conclusion: "failure" });
+  });
+
   test("asks for a usable purpose when the reviewer cannot establish the spec", async () => {
     const github = createGitHub();
     const ticket = await readyTicket(github);
@@ -489,6 +523,22 @@ describe("parseReviewResult", () => {
       error: "finding 0 evidence must not be blank",
     },
     {
+      name: "a finding that omits relatedLocation",
+      output: {
+        status: "findings",
+        findings: [Object.fromEntries(Object.entries(finding).filter(([key]) => key !== "relatedLocation"))],
+      },
+      error: "must have required property 'relatedLocation'",
+    },
+    {
+      name: "a whitespace-only related path",
+      output: {
+        status: "findings",
+        findings: [{ ...finding, relatedLocation: { path: "  ", line: 3 } }],
+      },
+      error: "finding 0 relatedLocation.path must not be blank",
+    },
+    {
       name: "a clean status that carries findings",
       output: { status: "clean", findings: [finding] },
       error: 'Review status "clean" requires an empty findings array',
@@ -515,7 +565,38 @@ describe("extractPrPurpose", () => {
     );
 
     expect(extractPrPurpose(populated)).toBe(
-      "Renew sessions without interrupting active campus presence.",
+      "### Change and measurable outcome\n\nRenew sessions without interrupting active campus presence.",
     );
+  });
+
+  const summary = "## Summary\n\nAdmins delete accounts on request.";
+  const outcome = "## Change and measurable outcome\n\n- DELETE returns 204.";
+  const changes = "## Changes\n\n- Refuse deleted accounts everywhere.\n\n### Migration\n\n- Adds `deleted`.";
+  const notes = "## Notes for Reviewers\n\n- Deletion is final.";
+  const testing = "## Testing\n\n- [x] Unit tests";
+
+  test.each([
+    {
+      name: "keeps the summary, change list, and reviewer notes as requirements",
+      body: [summary, outcome, changes, testing, notes].join("\n\n"),
+      purpose: [
+        "### Change and measurable outcome\n\n- DELETE returns 204.",
+        "### Summary\n\nAdmins delete accounts on request.",
+        "### Changes\n\n- Refuse deleted accounts everywhere.\n\n### Migration\n\n- Adds `deleted`.",
+        "### Notes for Reviewers\n\n- Deletion is final.",
+      ].join("\n\n"),
+    },
+    {
+      name: "needs the measurable outcome even when a change list exists",
+      body: [changes, notes].join("\n\n"),
+      purpose: null,
+    },
+    {
+      name: "treats a template-comment-only outcome as missing",
+      body: ["## Change and measurable outcome\n\n<!-- State the outcome. -->", changes].join("\n\n"),
+      purpose: null,
+    },
+  ])("$name", ({ body, purpose }) => {
+    expect(extractPrPurpose(body)).toBe(purpose);
   });
 });

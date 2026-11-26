@@ -30,7 +30,7 @@ pnpm metrics:report path/to/metrics-input.json
 pnpm drift:check policies/rulesets/expected.json path/to/actual-rulesets.json
 pnpm drift:review-gate    # needs FACTORY_AUDIT_TOKEN
 pnpm review:evaluate <repository-id> --credential-incidents 0 --unsafe-reviews 0 --human-approval-intact
-pnpm review:eval          # paid: evaluates every policy-pinned Claude and Codex configuration
+pnpm review:eval [case…] # paid: evaluates every policy-pinned provider, optionally only the named cases
 ```
 
 ## Adoption contract
@@ -63,7 +63,15 @@ request. GitHub records every bypass.
 Every internal pull request into `dev` or `main` gets one `Factory PR Review`
 check on its head SHA after product CI passes. The summary lists one line per
 finding under Standards and Spec, most severe first. Each finding's evidence,
-failure scenario, and required change are in its line annotation.
+failure scenario, and required change are in its line annotation. A finding
+about code the pull request should have changed but left untouched is anchored
+on the changed line that creates the need and names the untouched location as
+"must change".
+
+The reviewer's purpose is the `## Change and measurable outcome` section plus,
+when present, `## Summary`, `## Changes`, and `## Notes for Reviewers`. Every claim in those
+sections is a requirement the diff must meet. Editing any of them while a review
+runs makes that review technical.
 
 Every finding with confidence of at least 0.9 is posted. The only ceiling is
 GitHub's 50 annotations per check-run update; a review that reaches it says more
@@ -75,7 +83,7 @@ may exist, and the pull request should be split.
 | Findings with confidence of at least 0.9 (up to 50) | `failure`, one annotation per finding |
 | Missing `## Change and measurable outcome` | `failure`; fix the description and re-run |
 | Reviewer error or invalid output after that provider's second attempt | `failure` (technical); re-run allowed |
-| Claude reports subscription usage exhaustion | Review continues with configured Codex fallback; summary records actual reviewer and Claude refill time |
+| Claude reports subscription usage exhaustion | Claude retries once, then `failure` (technical); re-run allowed. No fallback provider is configured |
 | More than 3000 changed lines or 50 changed files, excluding configured lockfiles and generated migration snapshots | `neutral`; human review only, no provider usage |
 | Fork pull request | `neutral`; human review only, no credentials used |
 | Draft, or CI not green | no check yet; the required check stays pending |
@@ -94,33 +102,30 @@ never start an AI review. The
 `factory-pr-review` action reads policy from the pinned factory commit, checks
 out the head as untrusted evidence in `pr/` and the
 target branch's guidance in `trusted/`, and runs the primary provider pinned for
-that repository in `policies/pr-review.yaml`. Output is validated deterministically;
-a finding can block only if
-it points at a line the pull request changed. Claude runs with subprocess
+that repository in `policies/pr-review.yaml`. `trusted/` holds only that
+repository's `standardsPaths` sparse-checkout patterns from the policy, read at
+the base SHA, and the prompt lists the same patterns. The review gets
+`min(100, 25 + 2 × changed files)` turns. Output is validated deterministically;
+a finding can block only if its anchor is a line the pull request changed. Each
+Claude attempt's transcript is uploaded as a 7-day workflow artifact
+(`factory-review-transcript-attempt-N`) so a review can be audited. Claude runs with subprocess
 environment scrubbing, which needs bubblewrap, so when Claude is the provider
 the action installs it. If the runner image still blocks bwrap's user
 namespaces, the action relaxes `kernel.apparmor_restrict_unprivileged_userns`
 on that disposable runner and logs a warning.
 
-Claude is the primary provider for Campus Web. Only a positively identified
-Claude subscription usage-limit error routes that review to the pinned
-`codex/gpt-6.1-sol` fallback at `medium` effort. Each provider gets at most two
-attempts. Authentication, outage, timeout, transient throttling, and malformed
-output remain technical failures; they never activate fallback. Every new
-workflow tries Claude first. No cooldown survives between workflows.
-
-Codex calls the hosted OpenAI API, which the factory allows as an exception AJ
-approved on 2026-10-25. A fallback check names Codex as the actual reviewer,
-names the primary Claude model, and records Claude's reported refill time. If
-Claude reports no refill time, the check says so and still runs Codex.
+Claude is the only provider for every repository. Each review gets at most two
+Claude attempts. The action still supports a `usageLimitFallback` to Codex
+(`policies/pr-review.yaml`), which a positively identified Claude usage-limit
+error would activate, but none is configured since 2026-11-25: no OpenAI
+account backs `OPENAI_API_KEY`.
 
 ### When the reviewer is unavailable
 
 A provider outage, authentication failure, timeout, transient throttle, or
 invalid output after the bounded retries fails the check as technical. A
-same-SHA re-run is allowed. Claude usage exhaustion falls back only when the
-pinned Claude action exposes a recognized quota message. Unknown quota shapes
-fail closed as technical errors. An urgent merge uses the owner-team bypass.
+same-SHA re-run is allowed. Claude usage exhaustion is also technical while no
+fallback is configured. An urgent merge uses the owner-team bypass.
 
 ### Credentials
 
@@ -128,8 +133,8 @@ Provider credentials are the Actions secrets `CLAUDE_CODE_OAUTH_TOKEN` and
 `OPENAI_API_KEY`, set on each product repository or as organization secrets
 scoped to it. The caller template passes exactly these names, so
 `pnpm policy:validate` rejects any other `credential.secret`. Personal
-credentials need `owner`, `expiresOn`, and `rotateBy` in policy. Campus Web's
-Claude and OpenAI credentials are owned by `AJ1732`, expire on `2027-10-25`,
+credentials need `owner`, `expiresOn`, and `rotateBy` in policy. Each repository's
+Claude credential is owned by `AJ1732`, expire on `2027-10-25`,
 and rotate by `2027-09-25`. An expired
 credential fails `pnpm policy:validate` and stops new reviews, which keeps the
 required check pending.
@@ -168,6 +173,11 @@ review rules.
 
 - A draft pull request from a fork gets the neutral "human review only"
   check, because GitHub sends no draft state on fork CI runs.
+- The reviewer has no web access (WebFetch and WebSearch are disallowed), so it
+  cannot confirm third-party API behavior. Campus-server PR 192's PostHog
+  `bulk_delete` returning 202 with `deletion_errors` is the known miss. Opening
+  web access would let a reviewer that holds private code reach URLs a pull
+  request supplies.
 - The provider step runs in the job that holds `checks: write`. Claude's
   subprocess environment is scrubbed of secrets; splitting start, review, and
   publish into separate jobs would remove the token and is deferred.

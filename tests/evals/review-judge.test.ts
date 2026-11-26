@@ -23,6 +23,7 @@ const finding: ReviewFinding = {
   failureScenario: "Other users see the renewing user go offline.",
   requestedChange: "Keep presence until renewal settles.",
   source: "PR purpose",
+  relatedLocation: null,
 };
 
 describe("judge", () => {
@@ -68,6 +69,42 @@ describe("judge", () => {
       passed: false,
       detail: "missed src/session.ts:20-22; got src/session.ts:6 Presence drops during renewal",
     });
+  });
+
+  test("fails an in-range finding that names a different defect", () => {
+    const named: ExpectedReview = {
+      status: "findings",
+      defects: [{ path: "src/session.ts", lines: [5, 7], severity: "P1", mentions: ["Presence"] }],
+    };
+
+    expect(judge(named, { status: "findings", findings: [finding] }).passed).toBe(true);
+    expect(
+      judge(named, {
+        status: "findings",
+        findings: [
+          {
+            ...finding,
+            title: "Token renewal is not retried",
+            evidence: "renewToken has no retry.",
+            requestedChange: "Retry renewToken.",
+          },
+        ],
+      }).passed,
+    ).toBe(false);
+  });
+
+  test("credits an untouched-code defect through the finding's related location", () => {
+    const untouched: ExpectedReview = {
+      status: "findings",
+      defects: [{ path: "src/profile.ts", lines: [8, 22], severity: "P1", outsideDiff: true }],
+    };
+
+    expect(
+      judge(untouched, {
+        status: "findings",
+        findings: [{ ...finding, relatedLocation: { path: "src/profile.ts", line: 10 } }],
+      }).passed,
+    ).toBe(true);
   });
 
   test("fails a finding outside the seeded defect's lines", () => {

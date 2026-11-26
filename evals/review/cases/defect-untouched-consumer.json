@@ -1,0 +1,29 @@
+{
+  "name": "defect-untouched-consumer",
+  "purpose": "Support refunds. An admin can refund a paid order, which moves it to a new `refunded` status. A refunded order must not count toward revenue in any report.",
+  "base": {
+    "src/db.ts": "export interface Database {\n  one<T>(sql: string, params: unknown[]): Promise<T>;\n  query(sql: string, params: unknown[]): Promise<void>;\n  transaction(work: (tx: Database) => Promise<void>): Promise<void>;\n}\n\nexport declare const db: Database;\n",
+    "src/orders.ts": "import { db } from \"./db\";\n\nexport type OrderStatus = \"paid\" | \"cancelled\";\n\nexport interface Order {\n  id: string;\n  status: OrderStatus;\n  totalCents: number;\n  createdAt: string;\n}\n\nexport async function cancelOrder(orderId: string): Promise<void> {\n  await db.query(\"UPDATE orders SET status = 'cancelled' WHERE id = $1\", [orderId]);\n}\n",
+    "src/reports/revenue.ts": "import type { Order } from \"../orders\";\n\nexport function monthlyRevenue(orders: readonly Order[], month: string): number {\n  return orders\n    .filter((order) => order.createdAt.startsWith(month))\n    .filter((order) => order.status !== \"cancelled\")\n    .reduce((sum, order) => sum + order.totalCents, 0);\n}\n"
+  },
+  "head": {
+    "src/orders.ts": "import { db } from \"./db\";\n\nexport type OrderStatus = \"paid\" | \"cancelled\" | \"refunded\";\n\nexport interface Order {\n  id: string;\n  status: OrderStatus;\n  totalCents: number;\n  createdAt: string;\n}\n\nexport async function cancelOrder(orderId: string): Promise<void> {\n  await db.query(\"UPDATE orders SET status = 'cancelled' WHERE id = $1\", [orderId]);\n}\n\nexport async function refundOrder(orderId: string): Promise<void> {\n  await db.query(\"UPDATE orders SET status = 'refunded' WHERE id = $1 AND status = 'paid'\", [orderId]);\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "defects": [
+      {
+        "path": "src/reports/revenue.ts",
+        "lines": [
+          3,
+          8
+        ],
+        "severity": "P1",
+        "outsideDiff": true,
+        "mentions": [
+          "monthlyRevenue"
+        ]
+      }
+    ]
+  }
+}

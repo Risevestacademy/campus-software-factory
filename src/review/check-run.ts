@@ -1,6 +1,7 @@
 import {
   findingsCeiling,
   severityRank,
+  type FindingLocation,
   type ProviderId,
   type ReviewFinding,
 } from "./contracts.ts";
@@ -64,7 +65,7 @@ export interface CheckRunReport {
 // GitHub rejects a check-run summary longer than this.
 export const checkRunSummaryLimit = 65_535;
 const paragraphBreak = "\n\n";
-const purposeLabel = "**PR purpose:** ";
+const purposeLabel = `**PR purpose:**${paragraphBreak}`;
 const purposeTruncationMarker = " … (truncated)";
 
 const externalIdPattern =
@@ -208,7 +209,15 @@ function ceilingNotice(findings: readonly ReviewFinding[]): string {
 
 // Detail lives in the annotations; one line per finding keeps the summary under GitHub's limit.
 function formatFindingLine(finding: ReviewFinding): string {
-  return `- **${finding.severity}** ${finding.title} (\`${finding.path}:${finding.line}\`)`;
+  const related =
+    finding.relatedLocation === null
+      ? ""
+      : `, must change \`${formatLocation(finding.relatedLocation)}\``;
+  return `- **${finding.severity}** ${finding.title} (\`${formatLocation(finding)}\`${related})`;
+}
+
+function formatLocation(location: FindingLocation): string {
+  return `${location.path}:${location.line}`;
 }
 
 // The purpose is author-written and unbounded; findings and the footer are
@@ -236,6 +245,9 @@ function toAnnotation(finding: ReviewFinding): CheckAnnotation {
     title: `${finding.severity}: ${finding.title}`,
     message: [
       finding.evidence,
+      ...(finding.relatedLocation === null
+        ? []
+        : [`Must change: ${formatLocation(finding.relatedLocation)}`]),
       `Failure scenario: ${finding.failureScenario}`,
       `Required change: ${finding.requestedChange}`,
       `Basis: ${finding.source}`,

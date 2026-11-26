@@ -4,7 +4,15 @@ import { createJsonParser } from "../schema/index.ts";
 
 export type ProviderId = "claude" | "codex";
 
-export const reviewMaxTurns = 25;
+// Scales with the diff: a flat 25 turns could not read each of PR 192's 32 files once.
+export function reviewTurnBudget(changedFiles: number): number {
+  return Math.min(100, 25 + 2 * changedFiles);
+}
+
+export interface FindingLocation {
+  path: string;
+  line: number;
+}
 
 export interface ReviewFinding {
   axis: "spec" | "standards";
@@ -17,6 +25,9 @@ export interface ReviewFinding {
   failureScenario: string;
   requestedChange: string;
   source: string;
+  // Code the pull request should have changed but did not. The anchor (path,
+  // line) stays on a changed hunk; this may point anywhere in the repository.
+  relatedLocation: FindingLocation | null;
 }
 
 export const severityRank: Readonly<Record<ReviewFinding["severity"], number>> = {
@@ -149,5 +160,8 @@ function requireVisibleText(finding: ReviewFinding, index: number): void {
     if (finding[field].trim().length === 0) {
       throw new Error(`finding ${index} ${field} must not be blank`);
     }
+  }
+  if (finding.relatedLocation?.path.trim().length === 0) {
+    throw new Error(`finding ${index} relatedLocation.path must not be blank`);
   }
 }

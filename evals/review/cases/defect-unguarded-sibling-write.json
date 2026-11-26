@@ -1,0 +1,31 @@
+{
+  "name": "defect-unguarded-sibling-write",
+  "purpose": "Add a deleted account status. A deleted account must be refused everywhere a suspended one is, so every profile read and write must check that the account is active rather than that it is not suspended.",
+  "base": {
+    "src/db.ts": "export interface Database {\n  one<T>(sql: string, params: unknown[]): Promise<T>;\n  query(sql: string, params: unknown[]): Promise<void>;\n  transaction(work: (tx: Database) => Promise<void>): Promise<void>;\n}\n\nexport declare const db: Database;\n",
+    "src/accounts.ts": "export type AccountStatus = \"active\" | \"suspended\";\n\nexport interface Account {\n  id: string;\n  status: AccountStatus;\n  name: string;\n  phone: string | null;\n  avatarUrl: string | null;\n}\n",
+    "src/profile.ts": "import type { Account } from \"./accounts\";\nimport { db } from \"./db\";\n\nasync function loadAccount(userId: string): Promise<Account> {\n  return db.one<Account>(\"SELECT * FROM users WHERE id = $1\", [userId]);\n}\n\nexport async function updateName(userId: string, name: string): Promise<void> {\n  const account = await loadAccount(userId);\n  if (account.status === \"suspended\") {\n    throw new Error(\"Account is not active\");\n  }\n  await db.query(\"UPDATE users SET name = $1 WHERE id = $2\", [name, userId]);\n}\n\nexport async function updatePhone(userId: string, phone: string): Promise<void> {\n  const account = await loadAccount(userId);\n  if (account.status === \"suspended\") {\n    throw new Error(\"Account is not active\");\n  }\n  await db.query(\"UPDATE users SET phone = $1 WHERE id = $2\", [phone, userId]);\n}\n\nexport async function setAvatar(userId: string, avatarUrl: string): Promise<void> {\n  const account = await loadAccount(userId);\n  if (account.status === \"suspended\") {\n    throw new Error(\"Account is not active\");\n  }\n  await db.query(\"UPDATE users SET avatar_url = $1 WHERE id = $2\", [avatarUrl, userId]);\n}\n\nexport async function getProfile(userId: string): Promise<Account> {\n  const account = await loadAccount(userId);\n  if (account.status === \"suspended\") {\n    throw new Error(\"Account is not active\");\n  }\n  return account;\n}\n"
+  },
+  "head": {
+    "src/accounts.ts": "export type AccountStatus = \"active\" | \"suspended\" | \"deleted\";\n\nexport interface Account {\n  id: string;\n  status: AccountStatus;\n  name: string;\n  phone: string | null;\n  avatarUrl: string | null;\n}\n",
+    "src/profile.ts": "import type { Account } from \"./accounts\";\nimport { db } from \"./db\";\n\nasync function loadAccount(userId: string): Promise<Account> {\n  return db.one<Account>(\"SELECT * FROM users WHERE id = $1\", [userId]);\n}\n\nexport async function updateName(userId: string, name: string): Promise<void> {\n  const account = await loadAccount(userId);\n  if (account.status === \"suspended\") {\n    throw new Error(\"Account is not active\");\n  }\n  await db.query(\"UPDATE users SET name = $1 WHERE id = $2\", [name, userId]);\n}\n\nexport async function updatePhone(userId: string, phone: string): Promise<void> {\n  const account = await loadAccount(userId);\n  if (account.status === \"suspended\") {\n    throw new Error(\"Account is not active\");\n  }\n  await db.query(\"UPDATE users SET phone = $1 WHERE id = $2\", [phone, userId]);\n}\n\nexport async function setAvatar(userId: string, avatarUrl: string): Promise<void> {\n  const account = await loadAccount(userId);\n  if (account.status !== \"active\") {\n    throw new Error(\"Account is not active\");\n  }\n  await db.query(\"UPDATE users SET avatar_url = $1 WHERE id = $2\", [avatarUrl, userId]);\n}\n\nexport async function getProfile(userId: string): Promise<Account> {\n  const account = await loadAccount(userId);\n  if (account.status !== \"active\") {\n    throw new Error(\"Account is not active\");\n  }\n  return account;\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "defects": [
+      {
+        "path": "src/profile.ts",
+        "lines": [
+          8,
+          22
+        ],
+        "severity": "P1",
+        "outsideDiff": true,
+        "mentions": [
+          "updateName",
+          "updatePhone"
+        ]
+      }
+    ]
+  }
+}

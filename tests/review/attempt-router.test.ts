@@ -11,6 +11,7 @@ const policy: RepositoryReviewPolicy = {
   mode: "advisory",
   ciWorkflowName: "CI",
   targetBranches: ["dev", "main"],
+  standardsPaths: ["AGENTS.md"],
   provider: { id: "claude", model: "claude-opus-5-5" },
   canaryStartsAt: "2026-10-25T12:00:00Z",
   canaryProvider: { id: "claude", model: "claude-opus-5-5" },

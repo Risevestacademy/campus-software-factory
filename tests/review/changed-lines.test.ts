@@ -18,6 +18,7 @@ const finding: ReviewFinding = {
   failureScenario: "A renewing user is disconnected.",
   requestedChange: "Clear presence only after renewal settles.",
   source: "PR acceptance criterion",
+  relatedLocation: null,
 };
 
 const sessionPatch = [
@@ -69,6 +70,22 @@ describe("validateFindingLocations", () => {
   test("rejects a finding outside every changed hunk", () => {
     expect(() =>
       validateFindingLocations([{ ...finding, line: 99 }], files),
+    ).toThrow("finding 0 line 99 is outside the changed hunks of src/session.ts");
+  });
+
+  test.each([
+    { name: "an untouched line of a changed file", relatedLocation: { path: "src/session.ts", line: 99 } },
+    { name: "a file the pull request did not change", relatedLocation: { path: "src/profile.ts", line: 3 } },
+  ])("accepts code that should have changed in $name", ({ relatedLocation }) => {
+    expect(() => validateFindingLocations([{ ...finding, relatedLocation }], files)).not.toThrow();
+  });
+
+  test("still requires the anchor inside a changed hunk when a related location is set", () => {
+    expect(() =>
+      validateFindingLocations(
+        [{ ...finding, line: 99, relatedLocation: { path: "src/session.ts", line: 99 } }],
+        files,
+      ),
     ).toThrow("finding 0 line 99 is outside the changed hunks of src/session.ts");
   });
 

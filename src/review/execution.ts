@@ -1,6 +1,7 @@
 import { matchesPath } from "../policy/index.ts";
 import {
   parseReviewResult,
+  reviewTurnBudget,
   validateFindingLocations,
   type ChangedFile,
 } from "./contracts.ts";
@@ -103,7 +104,7 @@ export type PreflightSkipReason =
   | "untargeted-branch";
 
 export type PreflightDecision =
-  | { kind: "ready"; ticket: ReviewTicket }
+  | { kind: "ready"; ticket: ReviewTicket; maxTurns: number }
   | { kind: "skip"; reason: PreflightSkipReason };
 
 export type ValidationDecision = { valid: true } | { valid: false; reason: string };
@@ -308,6 +309,7 @@ export function createFactoryReviewExecution(
           purpose,
           checkRunId,
         },
+        maxTurns: reviewTurnBudget(size.changedFiles),
       };
     },
 
@@ -358,10 +360,27 @@ export function createFactoryReviewExecution(
   };
 }
 
+const outcomeHeading = "Change and measurable outcome";
+const requirementHeadings = ["Summary", "Changes", "Notes for Reviewers"];
+
+// The outcome section gates review. The summary, change list, and reviewer notes
+// carry the concrete requirements: PR 192 stated "refused everywhere" only under Changes.
 export function extractPrPurpose(body: string): string | null {
+  if (prSection(body, outcomeHeading) === null) {
+    return null;
+  }
+  return [outcomeHeading, ...requirementHeadings]
+    .flatMap((heading) => {
+      const content = prSection(body, heading);
+      return content === null ? [] : [`### ${heading}\n\n${content}`];
+    })
+    .join("\n\n");
+}
+
+function prSection(body: string, heading: string): string | null {
   const lines = body.split(/\r?\n/);
   const headingIndex = lines.findIndex(
-    (line) => line.trim().toLowerCase() === "## change and measurable outcome",
+    (line) => line.trim().toLowerCase() === `## ${heading.toLowerCase()}`,
   );
   if (headingIndex === -1) {
     return null;
@@ -374,11 +393,11 @@ export function extractPrPurpose(body: string): string | null {
     }
     sectionLines.push(line);
   }
-  const purpose = sectionLines
+  const content = sectionLines
     .join("\n")
     .replace(/<!--[\s\S]*?-->/g, "")
     .trim();
-  return purpose.length > 0 ? purpose : null;
+  return content.length > 0 ? content : null;
 }
 
 function skip(reason: PreflightSkipReason): PreflightDecision {

@@ -8,12 +8,13 @@ import {
   providerAdapter,
   renderReviewPrompt,
   reviewOutputSchemaPath,
+  reviewTurnBudget,
   validateFindingLocations,
   type ReviewProvider,
   type ReviewResult,
 } from "../../src/review/index.ts";
 import { loadFactoryReviewPolicies } from "../../src/review/policy-loader.ts";
-import { reviewOutputFromCli } from "./cli-output.ts";
+import { reviewFailureFromCli, reviewOutputFromCli } from "./cli-output.ts";
 import { findsEveryExpectedDefect, judge } from "./judge.ts";
 import { buildEvalCommand, configuredEvalProviders } from "./providers.ts";
 import {
@@ -39,7 +40,7 @@ interface CaseScore {
 const schemaPath = reviewOutputSchemaPath();
 const schema = await readFile(schemaPath, "utf8");
 const providers = await pinnedReviewProviders();
-const cases = loadReviewCases();
+const cases = selectCases(loadReviewCases(), process.argv.slice(2));
 const providerReports = [];
 for (const provider of providers) {
   providerReports.push(await scoreProvider(provider));
@@ -47,6 +48,19 @@ for (const provider of providers) {
 const passed = providerReports.every((report) => report.passed);
 process.stdout.write(`${JSON.stringify({ passed, providers: providerReports }, null, 2)}\n`);
 process.exitCode = passed ? 0 : 1;
+
+// Named cases let a red/green proof pay for only the cases it needs.
+function selectCases(all: ReviewCase[], argv: readonly string[]): ReviewCase[] {
+  const names = argv.filter((arg) => arg !== "--");
+  if (names.length === 0) {
+    return all;
+  }
+  const unknown = names.filter((name) => !all.some((entry) => entry.name === name));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown review eval case: ${unknown.join(", ")}`);
+  }
+  return all.filter((entry) => names.includes(entry.name));
+}
 
 async function pinnedReviewProviders(): Promise<ReviewProvider[]> {
   const { policy } = await loadFactoryReviewPolicies(new Date());
@@ -104,11 +118,19 @@ async function scoreCase(
       expected: reviewCase.expect,
       allExpectedDefectsFound: false,
       passed: false,
-      detail: `invalid review: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `invalid review: ${failureDetail(error)}`,
     };
   } finally {
     await rm(workspace.root, { recursive: true, force: true });
   }
+}
+
+// execFile rejects a non-zero exit with stdout attached; the CLI's result
+// message there names the cause (error_max_turns, usage limit) the message drops.
+function failureDetail(error: unknown): string {
+  const stdout = (error as { stdout?: unknown }).stdout;
+  const reason = typeof stdout === "string" ? reviewFailureFromCli(stdout) : undefined;
+  return reason ?? (error instanceof Error ? error.message : String(error));
 }
 
 async function review(
@@ -116,15 +138,18 @@ async function review(
   workspace: ReviewWorkspace,
   provider: ReviewProvider,
 ): Promise<ReviewResult> {
-  const prompt = renderReviewPrompt({
-    repository: "factory-eval/review",
-    workflowRunId: 1,
-    pullRequestNumber: 1,
-    baseSha: workspace.baseSha,
-    headSha: workspace.headSha,
-    purpose: reviewCase.purpose,
-    checkRunId: 1,
-  });
+  const prompt = renderReviewPrompt(
+    {
+      repository: "factory-eval/review",
+      workflowRunId: 1,
+      pullRequestNumber: 1,
+      baseSha: workspace.baseSha,
+      headSha: workspace.headSha,
+      purpose: reviewCase.purpose,
+      checkRunId: 1,
+    },
+    reviewCase.standardsPaths,
+  );
   const outputPath = join(workspace.root, "provider-output.json");
   const invocation = buildEvalCommand(provider, {
     prompt,
@@ -132,6 +157,7 @@ async function review(
     schema,
     schemaPath,
     outputPath,
+    maxTurns: reviewTurnBudget(workspace.changedFiles.length),
   });
   const pending = run(
     invocation.command,

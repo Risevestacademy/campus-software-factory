@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { reviewOutputFromCli } from "../../evals/review/cli-output.js";
+import {
+  reviewFailureFromCli,
+  reviewOutputFromCli,
+} from "../../evals/review/cli-output.js";
 import { parseReviewResult, type ReviewResult } from "../../src/review/index.js";
 
 const review: ReviewResult = { status: "clean", findings: [] };
@@ -22,5 +25,11 @@ describe("reviewOutputFromCli", () => {
     expect(() => parseReviewResult(reviewOutputFromCli(stdout))).toThrow(
       "Review output must be valid JSON",
     );
+  });
+
+  test("names the CLI's failure cause", () => {
+    const stdout = cliStdout({ subtype: "error_max_turns", is_error: true, num_turns: 29 });
+
+    expect(reviewFailureFromCli(stdout)).toBe("Claude stopped: error_max_turns after 29 turns");
   });
 });

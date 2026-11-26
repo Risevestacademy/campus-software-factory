@@ -10,7 +10,6 @@ import {
   readProviderOutput,
   renderReviewPrompt,
   reviewAttributionFor,
-  reviewMaxTurns,
   reviewOutputSchema,
   reviewOutputSchemaPath,
   type ExecutionPolicy,
@@ -62,7 +61,8 @@ switch (phase) {
       notice(`Factory review skipped: ${decision.reason}`);
       break;
     }
-    const { ticket } = decision;
+    const { ticket, maxTurns } = decision;
+    const { standardsPaths } = policy.review;
     writeOutput("eligible", "true");
     writeOutput("reason", "eligible");
     writeOutput("base_sha", ticket.baseSha);
@@ -72,10 +72,11 @@ switch (phase) {
     writeOutput("provider", policy.review.provider.id);
     writeOutput("model", policy.review.provider.model);
     writeOutput("effort", policy.review.provider.effort ?? "");
-    writeOutput("max_turns", String(reviewMaxTurns));
+    writeOutput("max_turns", String(maxTurns));
+    writeOutput("standards_paths", standardsPaths.join("\n"));
     writeOutput("output_schema", JSON.stringify(reviewOutputSchema()));
     writeOutput("output_schema_path", reviewOutputSchemaPath());
-    writeOutput("prompt", renderReviewPrompt(ticket));
+    writeOutput("prompt", renderReviewPrompt(ticket, standardsPaths));
     break;
   }
   case "validate": {

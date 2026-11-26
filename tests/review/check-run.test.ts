@@ -21,6 +21,7 @@ const finding: ReviewFinding = {
   failureScenario: "A renewing user is disconnected.",
   requestedChange: "Clear presence only after renewal settles.",
   source: "PR acceptance criterion",
+  relatedLocation: null,
 };
 
 const context: CheckRunContext = {
@@ -79,6 +80,21 @@ describe("buildCheckRunReport", () => {
     );
   });
 
+  test("names the untouched code a finding requires to change", () => {
+    const report = buildCheckRunReport(
+      {
+        kind: "findings",
+        findings: [{ ...finding, relatedLocation: { path: "src/profile.ts", line: 98 } }],
+      },
+      context,
+    );
+
+    expect(report.annotations[0]?.message).toContain("Must change: src/profile.ts:98");
+    expect(report.summary).toContain(
+      "- **P1** Renewal drops presence (`src/session.ts:12`, must change `src/profile.ts:98`)",
+    );
+  });
+
   test("orders findings most severe first whatever order the reviewer returned", () => {
     const report = buildCheckRunReport(
       {
@@ -134,9 +150,10 @@ describe("buildCheckRunReport", () => {
       failureScenario: "f".repeat(1000),
       requestedChange: "r".repeat(1000),
       source: "s".repeat(500),
+      relatedLocation: { path: "q".repeat(500), line: 9_999_999 },
     };
     const findings = Array.from({ length: findingsCeiling }, () => largest);
-    const findingLine = `- **P1** ${largest.title} (\`${largest.path}:12\`)`;
+    const findingLine = `- **P1** ${largest.title} (\`${largest.path}:12\`, must change \`${"q".repeat(500)}:9999999\`)`;
 
     function linesOf(summary: string): number {
       return summary.split("\n").filter((line) => line === findingLine).length;
@@ -146,7 +163,7 @@ describe("buildCheckRunReport", () => {
       const report = buildCheckRunReport({ kind: "findings", findings }, context);
 
       expect(report.summary.length).toBeLessThanOrEqual(checkRunSummaryLimit);
-      expect(report.summary).toContain(`**PR purpose:** ${context.purpose}`);
+      expect(report.summary).toContain(`**PR purpose:**\n\n${context.purpose}`);
       expect(linesOf(report.summary)).toBe(findingsCeiling);
     });
 

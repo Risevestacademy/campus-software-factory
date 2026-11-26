@@ -1,0 +1,32 @@
+{
+  "name": "defect-requirement-in-summary",
+  "body": "## Summary\n\nUsers can request a password reset email. To stop inbox flooding, an account gets at most one reset email per 15 minutes; extra requests inside that window send nothing.\n\n## Change and measurable outcome\n\n- `POST /password-reset` with a registered email sends a reset email with a token.\n- An unknown email gets the same 202 response, so the endpoint does not reveal which emails are registered.\n\n## Changes\n\n- New `requestPasswordReset` handler.\n\n## Testing\n\n- [x] Unit tests\n\n## Notes for Reviewers\n\n- Tokens expire after one hour.\n",
+  "base": {
+    "src/db.ts": "export interface Database {\n  one<T>(sql: string, params: unknown[]): Promise<T>;\n  query(sql: string, params: unknown[]): Promise<void>;\n  transaction(work: (tx: Database) => Promise<void>): Promise<void>;\n}\n\nexport declare const db: Database;\n",
+    "src/email.ts": "export declare function sendEmail(to: string, subject: string, body: string): Promise<void>;\n"
+  },
+  "head": {
+    "src/password-reset.ts": "import { randomBytes } from \"node:crypto\";\n\nimport { db } from \"./db\";\nimport { sendEmail } from \"./email\";\n\nexport async function requestPasswordReset(email: string): Promise<{ status: 202 }> {\n  const user = await db.one<{ id: string } | null>(\"SELECT id FROM users WHERE email = $1\", [email]);\n  if (user !== null) {\n    const token = randomBytes(32).toString(\"hex\");\n    await db.query(\n      \"INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, now() + interval '1 hour')\",\n      [user.id, token],\n    );\n    await sendEmail(email, \"Reset your password\", `Your reset token: ${token}`);\n  }\n  return { status: 202 };\n}\n"
+  },
+  "expect": {
+    "status": "findings",
+    "defects": [
+      {
+        "path": "src/password-reset.ts",
+        "lines": [
+          6,
+          17
+        ],
+        "severity": "P2",
+        "mentions": [
+          "15 minute",
+          "rate limit",
+          "rate-limit",
+          "ratelimit",
+          "throttl",
+          "flood"
+        ]
+      }
+    ]
+  }
+}
