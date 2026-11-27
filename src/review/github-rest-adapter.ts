@@ -163,22 +163,65 @@ export class GitHubRestAdapter implements GitHubReviewPort {
         .filter((run) => run.name === workflowName),
     );
     return Promise.all(
-      runs.map(async (run) => ({
-        headSha: requireString(run.head_sha, "workflow head SHA"),
-        headRepository: requireString(
+      runs.map(async (run) => {
+        const headSha = requireString(run.head_sha, "workflow head SHA");
+        const headRepository = requireString(
           requireObject(run.head_repository, "workflow head repository").full_name,
           "workflow head repository name",
-        ),
-        pullRequestNumbers: requireArray(run.pull_requests, "workflow pull requests").map(
-          (entry) =>
-            requireNumber(
-              requireObject(entry, "workflow pull request").number,
-              "workflow pull request number",
-            ),
-        ),
-        completedAt: await this.firstSuccessfulAttemptCompletedAt(repository, run),
-      })),
+        );
+        return {
+          headSha,
+          headRepository,
+          pullRequestNumbers: await this.runPullRequestNumbers(
+            repository,
+            run,
+            headSha,
+            headRepository,
+          ),
+          completedAt: await this.firstSuccessfulAttemptCompletedAt(repository, run),
+        };
+      }),
     );
+  }
+
+  // GitHub empties a run's pull_requests once its head branch is deleted,
+  // the usual state of a merged pull request. Stacked pull requests share
+  // commits, so only the one whose head is the run's branch owns the run.
+  private async runPullRequestNumbers(
+    repository: string,
+    run: Record<string, unknown>,
+    headSha: string,
+    headRepository: string,
+  ): Promise<number[]> {
+    const listed = requireArray(run.pull_requests, "workflow pull requests").map((entry) =>
+      requireNumber(
+        requireObject(entry, "workflow pull request").number,
+        "workflow pull request number",
+      ),
+    );
+    if (listed.length > 0 || headRepository !== repository) {
+      return listed;
+    }
+    const headBranch = requireString(run.head_branch, "workflow head branch");
+    const pages = await this.paginate(
+      `/repos/${repository}/commits/${headSha}/pulls?per_page=100`,
+    );
+    return pages
+      .flatMap((page) => requireArray(page, "commit pull request page"))
+      .map((value) => requireObject(value, "commit pull request"))
+      .filter((pullRequest) => {
+        const head = requireObject(pullRequest.head, "commit pull request head");
+        const headRepo = head.repo;
+        return (
+          head.ref === headBranch &&
+          typeof headRepo === "object" &&
+          headRepo !== null &&
+          (headRepo as Record<string, unknown>).full_name === headRepository
+        );
+      })
+      .map((pullRequest) =>
+        requireNumber(pullRequest.number, "commit pull request number"),
+      );
   }
 
   // A listed run shows its latest attempt, and a rerun moves its updated_at.

@@ -269,6 +269,50 @@ describe("GitHubRestAdapter", () => {
     );
   });
 
+  test("resolves a run GitHub stopped linking to the pull request whose head is its branch", async () => {
+    const run = (id: number, headRepository: string) => ({
+      id,
+      run_attempt: 1,
+      name: "CI",
+      head_sha: `sha-${id}`,
+      head_branch: "feat/space-full-message",
+      updated_at: "2026-10-25T10:00:00Z",
+      head_repository: { full_name: headRepository },
+      pull_requests: [],
+    });
+    const pullRequest = (number: number, ref: string) => ({
+      number,
+      head: { ref, repo: { full_name: "rise/campus-web" } },
+    });
+    const responses: Record<string, unknown> = {
+      "/actions/runs?": {
+        workflow_runs: [run(1, "rise/campus-web"), run(2, "outsider/campus-web")],
+      },
+      "/commits/sha-1/pulls": [
+        pullRequest(138, "feat/space-full-message"),
+        pullRequest(150, "feat/stacked-on-top"),
+      ],
+    };
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+      const key = Object.keys(responses).find((path) => String(url).includes(path));
+      return jsonResponse(responses[key ?? ""] ?? {});
+    });
+
+    const runs = await adapter(fetcher).listSuccessfulPullRequestRuns(
+      "rise/campus-web",
+      "CI",
+      "2026-10-25T09:00:00Z",
+    );
+
+    expect(runs.map((entry) => [entry.headSha, entry.pullRequestNumbers])).toEqual([
+      ["sha-1", [138]],
+      ["sha-2", []],
+    ]);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).not.toContainEqual(
+      expect.stringContaining("/commits/sha-2/pulls"),
+    );
+  });
+
   test("lists pull request label names", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
