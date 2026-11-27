@@ -1,20 +1,15 @@
 import { parseArgs } from "node:util";
 
-import { parseExternalId } from "./check-run.ts";
-import {
-  evaluateCanary,
-  type CanaryAttestation,
-  type CanaryRecord,
-} from "./canary-evaluator.ts";
-import {
-  GitHubRestAdapter,
-  type SuccessfulPullRequestRun,
-} from "./github-rest-adapter.ts";
-import { loadRepositoryReview } from "./policy-loader.ts";
+import type { CanaryAttestation } from "./canary-evaluator.ts";
+import { evaluateRepositoryCanary, selectCanaries } from "./canary-run.ts";
+import { GitHubRestAdapter } from "./github-rest-adapter.ts";
+import { resolveGitHubToken } from "./github-token.ts";
+import { loadFactoryReviewPolicies } from "./policy-loader.ts";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
+    all: { type: "boolean" },
     "credential-incidents": { type: "string" },
     "unsafe-reviews": { type: "string" },
     "human-approval-intact": { type: "boolean" },
@@ -22,79 +17,38 @@ const { values, positionals } = parseArgs({
 });
 
 try {
+  const all = values.all === true;
   const repositoryId = positionals[0];
-  if (repositoryId === undefined) {
-    throw new Error("Usage: pnpm review:evaluate <repository-id> [attestation flags]");
+  if (all === (repositoryId !== undefined)) {
+    throw new Error(
+      "Usage: pnpm review:evaluate <repository-id> | --all [attestation flags]",
+    );
   }
   const now = new Date();
-  const { repository, review, policy } = await loadRepositoryReview(
-    (entry) => entry.id === repositoryId,
-    now,
-  );
-  if (review.mode === "disabled" || review.canaryStartsAt === undefined) {
-    throw new Error(`Repository "${repositoryId}" has no active canary`);
-  }
+  const attested = attestation();
+  const { bundle, policy } = await loadFactoryReviewPolicies(now);
+  const canaries = selectCanaries(bundle.repositories, policy.repositories, repositoryId);
   const github = new GitHubRestAdapter({
     apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
-    token: requiredEnvironment("GITHUB_TOKEN"),
+    token: await resolveGitHubToken(),
   });
-  const runs = await github.listSuccessfulPullRequestRuns(
-    repository.github,
-    review.ciWorkflowName,
-    review.canaryStartsAt,
+  const reports = await Promise.all(
+    canaries.map(async (canary) => ({
+      repository: canary.review.id,
+      ...(await evaluateRepositoryCanary({
+        github,
+        canary,
+        criteria: policy.canary,
+        attestation: attested,
+        now,
+      })),
+    })),
   );
-  const records = await Promise.all(
-    earliestRunPerHead(runs, repository.github).map(
-      async (run): Promise<CanaryRecord> => {
-        const pullRequestNumber = run.pullRequestNumbers[0] ?? 0;
-        const [checks, labels] = await Promise.all([
-          github.listFactoryCheckRuns(repository.github, run.headSha),
-          github.listPullRequestLabels(repository.github, pullRequestNumber),
-        ]);
-        return {
-          pullRequestNumber,
-          headSha: run.headSha,
-          ciCompletedAt: run.completedAt,
-          checks: checks.flatMap((check) => {
-            const parsed = parseExternalId(check.externalId);
-            return check.status === "completed" && parsed !== null
-              ? [{ outcome: parsed.outcome, completedAt: check.completedAt }]
-              : [];
-          }),
-          labels,
-        };
-      },
-    ),
-  );
-  const report = evaluateCanary({
-    records,
-    attestation: attestation(),
-    criteria: policy.canary,
-    startsAt: review.canaryStartsAt,
-    now,
-  });
-  process.stdout.write(`${JSON.stringify({ repository: repositoryId, ...report }, null, 2)}\n`);
-  process.exitCode = report.decidable && report.passed ? 0 : 1;
+  process.stdout.write(`${JSON.stringify(all ? reports : reports[0], null, 2)}\n`);
+  process.exitCode = reports.every((report) => report.decidable && report.passed) ? 0 : 1;
 } catch (error: unknown) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
-}
-
-function earliestRunPerHead(
-  runs: readonly SuccessfulPullRequestRun[],
-  githubRepository: string,
-): SuccessfulPullRequestRun[] {
-  const byHead = new Map<string, SuccessfulPullRequestRun>();
-  for (const run of runs) {
-    if (run.headRepository !== githubRepository || run.pullRequestNumbers.length !== 1) {
-      continue;
-    }
-    const existing = byHead.get(run.headSha);
-    if (existing === undefined || run.completedAt < existing.completedAt) {
-      byHead.set(run.headSha, run);
-    }
-  }
-  return [...byHead.values()];
 }
 
 function attestation(): CanaryAttestation {
@@ -114,12 +68,4 @@ function attestedCount(value: string | undefined): number | null {
     throw new Error(`Attestation count must be a non-negative integer, got "${value}"`);
   }
   return count;
-}
-
-function requiredEnvironment(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value.length === 0) {
-    throw new Error(`Missing required environment value: ${name}`);
-  }
-  return value;
 }

@@ -30,6 +30,7 @@ pnpm metrics:report path/to/metrics-input.json
 pnpm drift:check policies/rulesets/expected.json path/to/actual-rulesets.json
 pnpm drift:review-gate    # needs FACTORY_AUDIT_TOKEN
 pnpm review:evaluate <repository-id> --credential-incidents 0 --unsafe-reviews 0 --human-approval-intact
+pnpm review:evaluate --all # every active canary; uses GITHUB_TOKEN, else the gh login
 pnpm review:eval [case…] # paid: evaluates every policy-pinned provider, optionally only the named cases
 ```
 
